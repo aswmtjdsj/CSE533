@@ -149,18 +149,8 @@ get_ifi_info(int family, int doaliases) {
 
 	for (ptr = buf; ptr < buf + ifc.ifc_len; ) {
 		ifr = (struct ifreq *) ptr;
-
-		switch (ifr->ifr_addr.sa_family) {
-		case AF_INET6:
-			len = sizeof(struct sockaddr_in6);
-			break;
-		case AF_INET:
-		default:
-			len = sizeof(struct sockaddr);
-			break;
-		}
 		/* for next one in buffer */
-		ptr += sizeof(ifr->ifr_name) + len;
+		ptr = (char *)(((struct ifreq *)ptr)+1);
 
 		if (ifr->ifr_addr.sa_family != family)
 			continue;
