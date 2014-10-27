@@ -210,20 +210,46 @@ free_ifi_info(struct ifi_info *ifihead)
 }
 
 int
-check_address(struct sock_info_aux * host_addr, struct sock_info_aux * cur_ip_addr) {
-    char * tmp = NULL;
-    size_t addr_len = 0;
-    if( strcmp(sa_ntop(host_addr->ip_addr, &tmp, &addr_len), LOOP_BACK_ADDR) == 0 
-            || ((struct sockaddr_in *) host_addr->ip_addr)->sin_addr.s_addr == ((struct sockaddr_in *) cur_ip_addr->ip_addr)->sin_addr.s_addr
-            ) {
-        return FLAG_LOOP_BACK;
-    }
-    else if(((struct sockaddr_in *) host_addr->subn_addr)->sin_addr.s_addr == ((struct sockaddr_in *)cur_ip_addr->subn_addr)->sin_addr.s_addr
-            || (((struct sockaddr_in *) host_addr->ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *) host_addr->net_mask)->sin_addr.s_addr) 
-             == (((struct sockaddr_in *) cur_ip_addr->ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *)cur_ip_addr->net_mask)->sin_addr.s_addr)) {
-        return FLAG_LOCAL;
-    }
-    else {
-        return FLAG_NON_LOCAL;
-    }
+check_address(struct sock_info_aux * host_addr,
+	      struct sock_info_aux * cur_ip_addr) {
+	char * tmp = NULL;
+	size_t addr_len = 0;
+	struct sockaddr_in *haddr = (struct sockaddr_in *)host_addr->ip_addr,
+	    *curaddr = (struct sockaddr_in *)cur_ip_addr->ip_addr;
+	sa_ntop(host_addr->ip_addr, &tmp, &addr_len);
+
+	if (strcmp(tmp, LOOP_BACK_ADDR) == 0 ||
+	    haddr->sin_addr.s_addr == curaddr->sin_addr.s_addr) {
+		free(tmp);
+		return FLAG_LOOP_BACK;
+	}
+	free(tmp);
+
+	if (haddr->sin_addr.s_addr == curaddr->sin_addr.s_addr ||
+	   (haddr->sin_addr.s_addr & haddr->sin_addr.s_addr) ==
+	   (curaddr->sin_addr.s_addr & curaddr->sin_addr.s_addr))
+		return FLAG_LOCAL;
+	return FLAG_NON_LOCAL;
 }
+
+int islocal_addr(struct sockaddr_in *saddr) {
+	struct ifi_info *head = get_ifi_info(AF_INET, 1), *iter;
+	int ret = 0;
+	iter = head;
+	while(iter) {
+		struct sockaddr_in *ifi_addr =
+		    (struct sockaddr_in *)iter->ifi_addr;
+		struct sockaddr_in *ifi_nm =
+		    (struct sockaddr_in *)iter->ifi_ntmaddr;
+		if ((ifi_addr->sin_addr.s_addr & ifi_nm->sin_addr.s_addr) ==
+		    (saddr->sin_addr.s_addr & ifi_nm->sin_addr.s_addr)) {
+			ret = 1;
+			break;
+		}
+		iter = iter->ifi_next;
+	}
+	free_ifi_info(head);
+	return ret;
+}
+
+/* vim: set noexpandtab tabstop=8: */
