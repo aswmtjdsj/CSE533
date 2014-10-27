@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <net/if.h>
+#include <string.h>
 
 #define IFI_NAME 16		/* same as IFNAMSIZ in <net/if.h> */
 #define IFI_HADDR  8		/* allow for 64-bit EUI-64 in future */
@@ -44,15 +45,30 @@ err_quit(const char *msg, int code){
 	exit(code);
 }
 
+static int iseolc(char in) {
+	return in == '\n' || in == '\r';
+}
+
+static int iseols(const char *in){
+	char last = in[strlen(in)-1];
+	return iseolc(last);
+}
+
+
+static void chomp(char *inout){
+	int pos = strlen(inout)-1;
+	while(iseolc(inout[pos])) {
+		inout[pos] = 0;
+		pos--;
+	}
+}
+
 struct serv_conf {
     int port_num;
     int sli_win_sz;
 };
 
 #define MAX_INTERFACE_NUM 10
-
-struct cli_conf {
-};
 
 struct udp_hdr {
 };
