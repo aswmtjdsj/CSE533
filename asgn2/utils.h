@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <net/if.h>
+#include <string.h>
+#include <netinet/in.h>
 
 #define IFI_NAME 16		/* same as IFNAMSIZ in <net/if.h> */
 #define IFI_HADDR  8		/* allow for 64-bit EUI-64 in future */
@@ -37,11 +39,30 @@ struct ifi_info *get_ifi_info(int, int);
 void free_ifi_info(struct ifi_info *);
 const char *sa_ntop(struct sockaddr *, char **, size_t *);
 int check_address(struct sock_info_aux  *, struct sock_info_aux *);
+int islocal_addr(struct sockaddr_in *);
 
 static void __attribute__((noreturn))
 err_quit(const char *msg, int code){
 	fputs(msg, stderr);
 	exit(code);
+}
+
+static int iseolc(char in) {
+	return in == '\n' || in == '\r';
+}
+
+static int iseols(const char *in){
+	char last = in[strlen(in)-1];
+	return iseolc(last);
+}
+
+
+static void chomp(char *inout){
+	int pos = strlen(inout)-1;
+	while(iseolc(inout[pos])) {
+		inout[pos] = 0;
+		pos--;
+	}
 }
 
 struct serv_conf {
@@ -50,9 +71,6 @@ struct serv_conf {
 };
 
 #define MAX_INTERFACE_NUM 10
-
-struct cli_conf {
-};
 
 struct udp_hdr {
 };
