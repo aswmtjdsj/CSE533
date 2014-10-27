@@ -35,10 +35,9 @@ const char *sa_ntop(struct sockaddr *sa, char **dst, size_t *len) {
 }
 
 static void
-_fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
+_fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 	assert(sockfd >= 0);
 	void *sinptr;
-	int flags = ifr->ifr_flags;
 	int len;
 	ifi->ifi_flags = flags;
 	memcpy(ifi->ifi_name, ifr->ifr_name, IFI_NAME);
@@ -167,7 +166,7 @@ get_ifi_info(int family, int doaliases) {
 			/* Can't get flags, ignore this one */
 			continue;
 
-		flags = ifrcopy.ifr_flags;
+		int flags = ifrcopy.ifr_flags;
 		if ((flags & IFF_UP) == 0)
 			continue;
 
@@ -175,10 +174,11 @@ get_ifi_info(int family, int doaliases) {
 		*ifipnext = ifi;
 		ifipnext = &ifi->ifi_next;
 
-		ifrcopy = *ifr;
 		ifi->ifi_index = idx;
 		ifi->ifi_myflags = myflags;
-		_fill_ifi_info(&ifrcopy, ifi);
+
+		ifrcopy = *ifr;
+		_fill_ifi_info(&ifrcopy, flags, ifi);
 	}
 	free(buf);
 	return ifihead;
