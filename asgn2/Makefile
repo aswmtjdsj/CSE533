@@ -3,6 +3,7 @@ LIBS =
 OBJS = utils.o prifinfo_plus.o mainloop.o
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o
+server_OBJS = server.o
 UNAME := $(shell uname -s)
 CFLAGS = -g -DLOG_LEVEL=10
 ifeq ($(UNAME),SunOS)
@@ -11,16 +12,19 @@ ifeq ($(UNAME),SunOS)
 endif
 
 
-all: $(OBJS) prifinfo_plus client
+all: $(OBJS) prifinfo_plus client server
 
 prifinfo_plus: $(prifinfo_plus_OBJS)
 	$(CC) $(CFLAGS) -o prifinfo_plus $(prifinfo_plus_OBJS) $(LIBS)
+
 client: $(client_OBJS)
 	$(CC) $(CFLAGS) -o client $(client_OBJS) $(LIBS)
+
+server: $(server_OBJS)
+	$(CC) $(CFLAGS) -o server $^ $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm prifinfo_plus $(OBJS)
-
+	rm prifinfo_plus client server $(OBJS)
