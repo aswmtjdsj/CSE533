@@ -28,6 +28,24 @@ struct tcp_header {
 
 CASSERT(sizeof(struct tcp_header) == 96, tcp_header_size);
 
+/* protocol_new: build a new protocol structure
+ * ml: the mainloop
+ * timer_cb: the timeout_handler, will be called when timeout happens
+ */
 struct protocol *protocol_new(void *ml, timer_cb);
-void protocol_gen_syn(struct protocol *, uint8_t **, int *);
+
+/* protocol_gen_syn: generate a packet without data,
+ * can be used for sending SYN/ACK/FIN/etc.
+ *
+ * p: the protocol struct
+ * buf: pointer to the buf
+ * len: pointer to the len
+ */
+void protocol_gen_nodata(struct protocol *p, uint8_t **buf, int *len);
+
+/* protocol_syn_sent: notify that a syn packet is sent
+ * this will cause the a state change to SYN_SENT, and a
+ * timer will be inserted into the mainloop.
+ */
+void protocol_syn_sent(struct protocol *p);
 #endif
