@@ -104,6 +104,7 @@ int main(int argc, char * const *argv) {
         // set server port
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_family = AF_INET;
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_port = htons(config_serv.port_num);
+        log_debug("[DEBUG] port num: %x\n", htons(config_serv.port_num));
 
         // get interface netmask
         if ((net_mask = ifi->ifi_ntmaddr) != NULL) {
@@ -143,7 +144,7 @@ int main(int argc, char * const *argv) {
         printf("Interface #%d:\n", iter);
         log_info("\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
         printf("\tIP Address: %s\n", sa_ntop(sock_data_info[iter].ip_addr, &tmp_str, &addr_len));
-        printf("\tPort Number: %d\n", ((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port);
+        printf("\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port)); // take care of different annotation of network and host 
         printf("\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
         printf("\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
         printf("\n");
