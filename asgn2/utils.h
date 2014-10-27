@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <net/if.h>
 #include <string.h>
+#include <netinet/in.h>
 
 #define IFI_NAME 16		/* same as IFNAMSIZ in <net/if.h> */
 #define IFI_HADDR  8		/* allow for 64-bit EUI-64 in future */
