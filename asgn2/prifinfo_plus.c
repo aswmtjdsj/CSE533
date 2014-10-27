@@ -36,7 +36,7 @@ main(int argc, char **argv)
 		if (ifi->ifi_flags & IFF_MULTICAST)		printf("MCAST ");
 		if (ifi->ifi_flags & IFF_LOOPBACK)		printf("LOOP ");
 		if (ifi->ifi_flags & IFF_POINTOPOINT)	printf("P2P ");
-		printf(">\n");
+		printf("\b>\n");
 
 		if ( (i = ifi->ifi_hlen) > 0) {
 			ptr = ifi->ifi_haddr;
