@@ -1,8 +1,8 @@
 CC = gcc
 LIBS =
-OBJS = utils.o prifinfo_plus.o mainloop.o client.o
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o
+OBJS = $(prifinfo_plus_OBJS) $(client_OBJS)
 server_OBJS = server.o
 UNAME := $(shell uname -s)
 CFLAGS = -g -DLOG_LEVEL=10
