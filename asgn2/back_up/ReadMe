@@ -1,0 +1,4 @@
+0. name: Xiang Yu; ID: 109417626; no partner
+1. Using /home/courses/cse533/Asgn2_code/get_ifi_info_plus as the modified version of get_ifi_info.
+2. Use socket_info struct to store sockfd, ip address bound, net mask and subnet address
+the size of the array is limit to MAX_INTERFACE, which is 10.
