@@ -55,7 +55,7 @@ int timer_cmp(struct timeval *a, struct timeval *b) {
 	return 0;
 }
 #define next_timer(head) {.tv_sec = head->sec, .tv_usec = head->usec}
-void
+void *
 timer_insert(void *loop, struct timeval *tv, timer_cb cb, void *data) {
 	struct mainloop *ml = loop;
 	struct timer *tmp = ml->timers;
@@ -77,8 +77,9 @@ timer_insert(void *loop, struct timeval *tv, timer_cb cb, void *data) {
 	*nextp = nt;
 	if (tmp)
 		timer_substract(&tmp->tv, &ttv);
+	return nt;
 }
-void fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
+void *fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
 	struct mainloop *ml = loop;
 	struct fd *nfd = malloc(sizeof(struct fd));
 	nfd->fd = fd;
@@ -89,6 +90,7 @@ void fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
 	ml->fds = nfd;
 	if (fd > ml->maxfd)
 		ml->maxfd = fd;
+	return nfd;
 }
 
 static void
@@ -102,12 +104,12 @@ recalc_maxfd(struct mainloop *ml) {
 	}
 }
 
-void fd_remove(void *loop, int fd) {
+void fd_remove(void *loop, void *handle) {
 	struct mainloop *ml = loop;
 	struct fd **nextp = &ml->fds;
 	struct fd *tfd = ml->fds;
 	while(tfd) {
-		if (tfd->fd == fd) {
+		if (tfd == handle) {
 			*nextp = tfd->next;
 			free(tfd);
 			recalc_maxfd(ml);
@@ -115,6 +117,22 @@ void fd_remove(void *loop, int fd) {
 		}
 		nextp = &tfd->next;
 		tfd = tfd->next;
+	}
+}
+
+void timer_remove(void *loop, void *handle) {
+	struct mainloop *ml = loop;
+	struct timer **nextp = &ml->timers;
+	struct timer *tt = ml->timers;
+	while(tt) {
+		if (tt == handle) {
+			*nextp = tt->next;
+			timer_add(&tt->next->tv, &tt->tv);
+			free(tt);
+			return;
+		}
+		nextp = &tt->next;
+		tt = tt->next;
 	}
 }
 
