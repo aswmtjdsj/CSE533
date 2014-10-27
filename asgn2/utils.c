@@ -38,6 +38,7 @@ const char *sa_ntop(struct sockaddr *sa, char **dst, size_t *len) {
 	}
 	return NULL;
 }
+
 static void
 _fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
 	assert(sockfd >= 0);
@@ -108,6 +109,7 @@ _fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
 		break;
 	}
 }
+
 struct ifi_info *
 get_ifi_info(int family, int doaliases) {
 	struct ifi_info *ifi, *ifihead, **ifipnext;
@@ -203,4 +205,23 @@ free_ifi_info(struct ifi_info *ifihead)
 		ifinext = ifi->ifi_next;
 		free(ifi);
 	}
+}
+
+int
+check_address(struct sock_info_aux * host_addr, struct sock_info_aux * cur_ip_addr) {
+    char * tmp = NULL;
+    size_t addr_len = 0;
+    if( strcmp(sa_ntop(host_addr->ip_addr, &tmp, &addr_len), LOOP_BACK_ADDR) == 0 
+            || ((struct sockaddr_in *) host_addr->ip_addr)->sin_addr.s_addr == ((struct sockaddr_in *) cur_ip_addr->ip_addr)->sin_addr.s_addr
+            ) {
+        return FLAG_LOOP_BACK;
+    }
+    else if(((struct sockaddr_in *) host_addr->subn_addr)->sin_addr.s_addr == ((struct sockaddr_in *)cur_ip_addr->subn_addr)->sin_addr.s_addr
+            || (((struct sockaddr_in *) host_addr->ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *) host_addr->net_mask)->sin_addr.s_addr) 
+             == (((struct sockaddr_in *) cur_ip_addr->ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *)cur_ip_addr->net_mask)->sin_addr.s_addr)) {
+        return FLAG_LOCAL;
+    }
+    else {
+        return FLAG_NON_LOCAL;
+    }
 }

@@ -28,14 +28,41 @@ struct ifi_info {
 
 #define	IFI_ALIAS	1	/* ifi_addr is an alias */
 
+struct sock_info_aux {
+    int sock_fd;
+    struct sockaddr * ip_addr;
+    struct sockaddr * net_mask;
+    struct sockaddr * subn_addr;
+};
+
 struct ifi_info *get_ifi_info(int, int);
 void free_ifi_info(struct ifi_info *);
 const char *sa_ntop(struct sockaddr *, char **, size_t *);
+int check_address(struct sock_info_aux  *, struct sock_info_aux *);
 
 static void __attribute__((noreturn))
 err_quit(const char *msg, int code){
 	fputs(msg, stderr);
 	exit(code);
 }
+
+struct serv_conf {
+    int port_num;
+    int sli_win_sz;
+};
+
+#define MAX_INTERFACE_NUM 10
+
+struct cli_conf {
+};
+
+struct udp_hdr {
+};
+
+#define FLAG_NON_LOCAL 0
+#define FLAG_LOCAL 1
+#define FLAG_LOOP_BACK 2
+
+#define LOOP_BACK_ADDR "127.0.0.1"
 
 #endif
