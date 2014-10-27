@@ -1,7 +1,7 @@
 CC = gcc
 LIBS =
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
-client_OBJS = client.o mainloop.o protocol.o
+client_OBJS = client.o mainloop.o protocol.o utils.o
 server_OBJS = server.o utils.o
 OBJS = $(prifinfo_plus_OBJS) $(client_OBJS) $(server_OBJS)
 UNAME := $(shell uname -s)

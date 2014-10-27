@@ -138,7 +138,7 @@ int main(int argc, char * const *argv) {
     free_ifi_info(ifihead);
 
     // info for interface array
-    printf("Bound interfaces in sock_data_aux array>\n");
+    printf("Bound interfaces>\n");
     for(iter = 0; iter < inter_index; iter++) {
         printf("Interface #%d:\n", iter);
         log_info("\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
@@ -147,6 +147,38 @@ int main(int argc, char * const *argv) {
         printf("\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
         printf("\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
         printf("\n");
+    }
+
+    // use select for incoming connection
+    fd_set f_s;
+    int max_fd_count = 0;
+    FD_ZERO(&f_s);
+
+    // fork a child to handle incoming conn
+    pid_t child_pid;
+
+    printf("Expecting upcoming datagram...\n");
+    for( ; ; ) {
+        max_fd_count = 0;
+        for(iter = 0; iter < inter_index; iter++) {
+            FD_SET(sock_data_info[iter].sock_fd, &f_s);
+            max_fd_count= ((sock_data_info[iter].sock_fd > max_fd_count) ? sock_data_info[iter].sock_fd : max_fd_count) + 1;
+        }
+
+        if((err_ret = select(max_fd_count, &f_s, NULL, NULL, NULL)) < 0) {
+            if(errno == EINTR) {
+                /* how to handle */
+                continue;
+            }
+        } else {
+            err_quit("select error: %d", err_ret);
+        }
+
+        for(iter = 0; iter < inter_index; iter++) {
+            if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
+
+            }
+        }
     }
 
     // garbage collection
@@ -168,5 +200,6 @@ int main(int argc, char * const *argv) {
         free(sock_data_info[iter].net_mask);
         free(sock_data_info[iter].subn_addr);
     }
+
     return 0;
 }
