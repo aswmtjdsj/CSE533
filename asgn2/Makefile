@@ -2,11 +2,12 @@ CC = gcc
 LIBS =
 OBJS = utils.o prifinfo_plus.o
 UNAME := $(shell uname -s)
+CFLAGS = -g
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
+	CFLAGS += -DBSD_COMP
 endif
 
-CFLAGS = -g
 
 all: $(OBJS) prifinfo_plus
 
