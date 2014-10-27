@@ -71,12 +71,12 @@ int main(int argc, char * const *argv) {
         print_ifi_flags(ifi);
 
         /*if ( (ifi_hlen = ifi->ifi_hlen) > 0) {
-          ptr = ifi->ifi_haddr;
-          do {
-          printf("%s%x", (ifi_hlen == ifi->ifi_hlen) ? "  " : ":", *ptr++);
-          } while (--ifi_hlen> 0);
-          printf("\n");
-          }*/
+            ptr = ifi->ifi_haddr;
+            do {
+                printf("%s%x", (ifi_hlen == ifi->ifi_hlen) ? "  " : ":", *ptr++);
+            } while (--ifi_hlen> 0);
+            printf("\n");
+        }*/
 
         if (ifi->ifi_mtu != 0) {
             printf("  MTU: %d\n", ifi->ifi_mtu);
@@ -138,9 +138,9 @@ int main(int argc, char * const *argv) {
     free_ifi_info(ifihead);
 
     // info for interface array
-    printf("Bound interfaces in array of sock_data_aux data structure>\n");
+    printf("Bound interfaces in sock_data_aux array>\n");
     for(iter = 0; iter < inter_index; iter++) {
-        printf("Bound Interface #%d:\n", inter_index);
+        printf("Interface #%d:\n", iter);
         log_info("\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
         printf("\tIP Address: %s\n", sa_ntop(sock_data_info[iter].ip_addr, &tmp_str, &addr_len));
         printf("\tPort Number: %d\n", ((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port);

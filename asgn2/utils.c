@@ -1,9 +1,4 @@
 #include <stddef.h>
-#include <arpa/inet.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <sys/ioctl.h>
-#include <string.h>
 #include <assert.h>
 #include "utils.h"
 

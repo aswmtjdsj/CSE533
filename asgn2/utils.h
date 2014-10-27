@@ -7,7 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <net/if.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
 #include <string.h>
+#include <errno.h>
 #include <netinet/in.h>
 
 #define IFI_NAME 16		/* same as IFNAMSIZ in <net/if.h> */
