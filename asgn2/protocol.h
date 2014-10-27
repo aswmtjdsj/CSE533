@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include "utils.h"
+#include "mainloop.h"
 
 struct protocol {
 	enum {
@@ -13,6 +14,8 @@ struct protocol {
 		LAST_ACK,
 	}state;
 	int fd;
+	int window_size;
+	void *ml;
 	struct timeval timeout;
 };
 
@@ -25,6 +28,6 @@ struct tcp_header {
 
 CASSERT(sizeof(struct tcp_header) == 96, tcp_header_size);
 
-struct protocol *protocol_new(void);
+struct protocol *protocol_new(void *ml, timer_cb);
 void protocol_gen_syn(struct protocol *, uint8_t **, int *);
 #endif

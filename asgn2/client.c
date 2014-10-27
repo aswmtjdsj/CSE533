@@ -28,6 +28,8 @@ void timer_callback(void *ml, void *data, const struct timeval *elapsed) {
 	fprintf(stderr, "expected %lf, real %lf\n", e2, e);
 	free(data);
 }
+void timeout_handler(void *ml, void *data, const struct timeval *elapsed) {
+}
 static void
 connect_to_server(void) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -46,7 +48,7 @@ connect_to_server(void) {
 	}
 	uint8_t *pkt = NULL;
 	int len = 0;
-	p = protocol_new();
+	p = protocol_new(ml, timeout_handler);
 	protocol_gen_syn(p, &pkt, &len);
 	sendto(sockfd, pkt, len, myflags,
 	       (struct sockaddr *)&saddr, sizeof(saddr));
