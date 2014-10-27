@@ -46,11 +46,6 @@ _fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
 	int flags = ifr->ifr_flags;
 	int len;
 	ifi->ifi_flags = flags;
-	ifi->ifi_mtu = 0;
-#if defined(SIOCGIFMTU) && defined(HAVE_STRUCT_IFREQ_IFR_MTU)
-	if (!ioctl(sockfd, SIOCGIFMTU, &ifrcopy))
-		ifi->ifi_mtu = ifrcopy.ifr_mtu;
-#endif
 	memcpy(ifi->ifi_name, ifr->ifr_name, IFI_NAME);
 	ifi->ifi_name[IFI_NAME-1] = '\0';
 	switch (ifr->ifr_addr.sa_family) {
@@ -108,6 +103,12 @@ _fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
 	default:
 		break;
 	}
+
+	ifi->ifi_mtu = 0;
+#if defined(SIOCGIFMTU)
+	if (!ioctl(sockfd, SIOCGIFMTU, ifr))
+		ifi->ifi_mtu = ifr->ifr_mtu;
+#endif
 }
 
 struct ifi_info *
@@ -179,6 +180,7 @@ get_ifi_info(int family, int doaliases) {
 		*ifipnext = ifi;
 		ifipnext = &ifi->ifi_next;
 
+		ifrcopy = *ifr;
 		ifi->ifi_index = idx;
 		ifi->ifi_myflags = myflags;
 		_fill_ifi_info(&ifrcopy, ifi);

@@ -26,7 +26,7 @@ main(int argc, char **argv)
 	doaliases = atoi(argv[2]);
 
 	for (ifihead = ifi = get_ifi_info(family, doaliases);
-		 ifi != NULL; ifi = ifi->ifi_next) {
+	     ifi != NULL; ifi = ifi->ifi_next) {
 		printf("%s: ", ifi->ifi_name);
 		if (ifi->ifi_index != 0)
 			printf("(%d) ", ifi->ifi_index);
@@ -38,13 +38,6 @@ main(int argc, char **argv)
 		if (ifi->ifi_flags & IFF_POINTOPOINT)	printf("P2P ");
 		printf("\b>\n");
 
-		if ( (i = ifi->ifi_hlen) > 0) {
-			ptr = ifi->ifi_haddr;
-			do {
-				printf("%s%x", (i == ifi->ifi_hlen) ? "  " : ":", *ptr++);
-			} while (--i > 0);
-			printf("\n");
-		}
 		if (ifi->ifi_mtu != 0)
 			printf("  MTU: %d\n", ifi->ifi_mtu);
 
