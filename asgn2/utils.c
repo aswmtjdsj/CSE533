@@ -107,7 +107,7 @@ _fill_ifi_info(struct ifreq *ifr, struct ifi_info *ifi) {
 	ifi->ifi_mtu = 0;
 #if defined(SIOCGIFMTU)
 	if (!ioctl(sockfd, SIOCGIFMTU, ifr))
-		ifi->ifi_mtu = ifr->ifr_mtu;
+		ifi->ifi_mtu = ifr->ifr_metric;
 #endif
 }
 
