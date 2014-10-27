@@ -5,6 +5,8 @@
 #include "utils.h"
 #include "mainloop.h"
 
+#define DATAGRAM_SIZE 512
+
 struct protocol {
 	enum {
 		SYN_SENT,
