@@ -130,7 +130,7 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 	ml->timers = tt;
 }
 
-void mainloop(void *data) {
+void mainloop_run(void *data) {
 	struct mainloop *ml = data;
 	struct timeval lasttv;
 	fd_set rfds, wfds;
