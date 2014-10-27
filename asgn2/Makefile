@@ -1,6 +1,6 @@
 CC = gcc
 LIBS =
-OBJS = utils.o prifinfo_plus.o mainloop.o
+OBJS = utils.o prifinfo_plus.o mainloop.o client.o
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o
 server_OBJS = server.o
