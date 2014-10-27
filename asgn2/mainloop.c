@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "log.h"
 #include "mainloop.h"
 struct mainloop {
 	struct timer *timers;
@@ -32,6 +34,15 @@ void timer_substract(struct timeval *tv1, struct timeval *tv2) {
 	}
 }
 static
+void timer_add(struct timeval *tv1, struct timeval *tv2) {
+	tv1->tv_sec += tv2->tv_sec;
+	tv1->tv_usec += tv2->tv_usec;
+	if (tv1->tv_usec >= 1000000) {
+		tv1->tv_sec++;
+		tv1->tv_usec-=1000000;
+	}
+}
+static
 int timer_cmp(struct timeval *a, struct timeval *b) {
 	if (a->tv_sec < b->tv_sec)
 		return -1;
@@ -51,7 +62,7 @@ timer_insert(void *loop, struct timeval *tv, timer_cb cb, void *data) {
 	struct timer **nextp = &ml->timers;
 	struct timeval ttv = *tv;
 	while(1){
-		if (timer_cmp(&ttv, &tmp->tv) < 0)
+		if (!tmp || timer_cmp(&ttv, &tmp->tv) < 0)
 			break;
 		timer_substract(&ttv, &tmp->tv);
 		nextp = &tmp->next;
@@ -62,7 +73,10 @@ timer_insert(void *loop, struct timeval *tv, timer_cb cb, void *data) {
 	nt->next = tmp;
 	nt->cb = cb;
 	nt->data = data;
-	timer_substract(&tmp->tv, &ttv);
+	nt->realtv = *tv;
+	*nextp = nt;
+	if (tmp)
+		timer_substract(&tmp->tv, &ttv);
 }
 void fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
 	struct mainloop *ml = loop;
@@ -106,7 +120,11 @@ void fd_remove(void *loop, int fd) {
 
 static
 void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
+	log_debug("Elapse start\n");
 	struct timer *tt = ml->timers;
+	struct timeval start, end;
+	int count = 0;
+	gettimeofday(&start, NULL);
 	while(1) {
 		struct timer *nt = tt->next;
 		struct timeval realtv;
@@ -117,16 +135,23 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 		if (tt->cb) {
 			realtv = *elapse;
 			timer_substract(&realtv, &tt->tv);
-			realtv.tv_sec += tt->realtv.tv_sec;
-			realtv.tv_usec += tt->realtv.tv_usec;
+			timer_add(&realtv, &tt->realtv);
 			tt->cb(ml, tt->data, &realtv);
 		}
+		count++;
+		if (!(count & 255))
+			log_warning("More than %d timer event fired at once,"
+				"this could potentially cause starve!!\n", count);
+		gettimeofday(&end, NULL);
+		timer_substract(&end, &start);
+		timer_add(elapse, &end);
 		timer_substract(elapse, &tt->tv);
 		free(tt);
 		tt = nt;
 		if (!tt)
 			break;
 	}
+	log_debug("Elapse end\n");
 	ml->timers = tt;
 }
 
@@ -150,7 +175,7 @@ void mainloop_run(void *data) {
 		gettimeofday(&nowtv, NULL);
 		timer_substract(&nowtv, &lasttv);
 		timer_substract(&ntv, &nowtv);
-		int ret = select(ml->maxfd, &rfds, &wfds, NULL, &ntv);
+		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, &ntv);
 		gettimeofday(&nowtv, NULL);
 		timer_substract(&nowtv, &lasttv);
 		gettimeofday(&lasttv, NULL);

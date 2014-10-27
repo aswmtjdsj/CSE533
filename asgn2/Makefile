@@ -4,7 +4,7 @@ OBJS = utils.o prifinfo_plus.o mainloop.o
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o
 UNAME := $(shell uname -s)
-CFLAGS = -g
+CFLAGS = -g -DLOG_LEVEL=10
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
 	CFLAGS += -DBSD_COMP
