@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include "protocol.h"
 #include "mainloop.h"
 #include "utils.h"
@@ -17,8 +18,6 @@ static struct cfg {
 	double drop_rate;
 	double read_rate;
 }cfg;
-static void *ml;
-static struct protocol *p;
 void timer_callback(void *ml, void *data, const struct timeval *elapsed) {
 	double e = elapsed->tv_sec;
 	struct timeval *xx = data;
@@ -30,11 +29,14 @@ void timer_callback(void *ml, void *data, const struct timeval *elapsed) {
 }
 void timeout_handler(void *ml, void *data, const struct timeval *elapsed) {
 }
+void sock_read_handler(void *ml, void *data, int rw) {
+}
 static void
-connect_to_server(void) {
+connect_to_server(void *ml) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int myflags = 0;
 	struct sockaddr_in saddr;
+
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = cfg.port;
 	saddr.sin_family = AF_INET;
@@ -46,12 +48,24 @@ connect_to_server(void) {
 		bind(sockfd, (struct sockaddr *)&laddr, sizeof(laddr));
 		myflags = MSG_DONTROUTE;
 	}
-	uint8_t *pkt = NULL;
-	int len = 0;
-	p = protocol_new(ml, timeout_handler);
-	protocol_gen_syn(p, &pkt, &len);
-	sendto(sockfd, pkt, len, myflags,
-	       (struct sockaddr *)&saddr, sizeof(saddr));
+	connect(sockfd, (struct sockaddr *)&saddr, sizeof(saddr));
+
+	uint8_t *pkt = malloc(HDR_SIZE+strlen(cfg.filename));
+	int len = HDR_SIZE+strlen(cfg.filename);
+	struct protocol *p = protocol_new(ml, timeout_handler);
+	p->window_size = cfg.recv_win;
+	srandom_r(cfg.seed, &p->buf);
+
+	struct tcp_header *hdr = (struct tcp_header *)pkt;
+	hdr->seq = random();
+	hdr->ack = 0;
+	hdr->window_size = protocol_available_window(p);
+	hdr->flags = HDR_SYN;
+	memcpy(hdr+1, cfg.filename, strlen(cfg.filename));
+
+	send(sockfd, pkt, len, myflags);
+	protocol_syn_sent(p);
+	fd_insert(ml, sockfd, FD_READ, sock_read_handler, p);
 }
 int main(int argc, char * const *argv) {
 	const char *cfgname;
@@ -60,6 +74,7 @@ int main(int argc, char * const *argv) {
 	else
 		cfgname = "client.in";
 	FILE *cfgfile = fopen(cfgname, "r");
+	srandom(time(NULL));
 
 	fgets(cfg.addr, sizeof(cfg.addr), cfgfile);
 	if (!iseols(cfg.addr))
@@ -81,17 +96,10 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
-	connect_to_server();
+	void *ml = mainloop_new();
 
-	ml = mainloop_new();
-	struct timeval *tv = malloc(sizeof(struct timeval));
-	tv->tv_sec = 2;
-	tv->tv_usec = 2000;
-	timer_insert(ml, tv, timer_callback, tv);
-	tv = malloc(sizeof(struct timeval));
-	tv->tv_sec = 2;
-	tv->tv_usec = 4100;
-	timer_insert(ml, tv, timer_callback, tv);
+	connect_to_server(ml);
+
 	mainloop_run(ml);
 	free(ml);
 }

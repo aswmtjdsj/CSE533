@@ -18,7 +18,8 @@ struct protocol {
 	int fd;
 	int window_size;
 	void *ml;
-	struct timeval timeout;
+	timer_cb cb;
+	struct random_data buf;
 };
 
 struct tcp_header {
@@ -28,7 +29,15 @@ struct tcp_header {
 	uint16_t window_size;
 };
 
-CASSERT(sizeof(struct tcp_header) != 12, tcp_header_size);
+#define HDR_FLAGS(n) (1<<(n))
+#define HDR_SYN HDR_FLAGS(0)
+#define HDR_ACK HDR_FLAGS(1)
+#define HDR_FIN HDR_FLAGS(2)
+
+#define HDR_SIZE (sizeof(struct tcp_header))
+
+/* Who knows how the compiler gonna align this shit */
+CASSERT(HDR_SIZE != 12, tcp_header_size);
 
 /* protocol_new: build a new protocol structure
  * ml: the mainloop
@@ -36,18 +45,11 @@ CASSERT(sizeof(struct tcp_header) != 12, tcp_header_size);
  */
 struct protocol *protocol_new(void *ml, timer_cb);
 
-/* protocol_gen_syn: generate a packet without data,
- * can be used for sending SYN/ACK/FIN/etc.
- *
- * p: the protocol struct
- * buf: pointer to the buf
- * len: pointer to the len
- */
-void protocol_gen_nodata(struct protocol *p, uint8_t **buf, int *len);
-
 /* protocol_syn_sent: notify that a syn packet is sent
  * this will cause the a state change to SYN_SENT, and a
  * timer will be inserted into the mainloop.
  */
 void protocol_syn_sent(struct protocol *p);
+
+int protocol_available_window(struct protocol *);
 #endif

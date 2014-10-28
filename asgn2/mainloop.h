@@ -1,6 +1,10 @@
 #ifndef __MAINLOOP_H__
 #define __MAINLOOP_H__
 #include <sys/time.h>
+
+#define FD_READ 1
+#define FD_WRITE 2
+
 typedef void (*timer_cb)(void *, void *, const struct timeval *);
 typedef void (*fd_cb)(void *, void *, int);
 void *timer_insert(void *, struct timeval *, timer_cb, void *data);
