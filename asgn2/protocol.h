@@ -28,7 +28,7 @@ struct tcp_header {
 	uint16_t window_size;
 };
 
-CASSERT(sizeof(struct tcp_header) == 96, tcp_header_size);
+CASSERT(sizeof(struct tcp_header) != 12, tcp_header_size);
 
 /* protocol_new: build a new protocol structure
  * ml: the mainloop
