@@ -31,6 +31,19 @@ void timeout_handler(void *ml, void *data, const struct timeval *elapsed) {
 }
 void sock_read_handler(void *ml, void *data, int rw) {
 }
+//Probability send/receive. drop packet at cfg.drop_rate
+int prob_send(int fd, uint8_t *buf, int len, int flags) {
+	return 0;
+}
+int prob_recv(int fd, uint8_t *buf, int len, int flags) {
+	return 0;
+}
+void connect_callback(struct protocol *p, int err) {
+	if (err == ETIMEDOUT) {
+		log_warning("Connection timedout, quiting...\n");
+		exit(1);
+	}
+}
 int main(int argc, char * const *argv) {
 	const char *cfgname;
 	if (argc >= 2)
@@ -60,20 +73,25 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
-	void *ml = mainloop_new();
-
+	struct sockaddr_in saddr;
+	int flags;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = cfg.port;
 	saddr.sin_family = AF_INET;
-	if (islocal_addr(&saddr)) {
+	if (islocal_addr(&saddr, 1)) {
 		struct sockaddr_in laddr;
-		log_info("Server address is local\n");
+		log_info("Server address is same machine\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);
-		laddr.sin_family = AF_INET;
-		bind(sockfd, (struct sockaddr *)&laddr, sizeof(laddr));
-		myflags = MSG_DONTROUTE;
+		flags = MSG_DONTROUTE;
+	} else if (islocal_addr(&saddr, 0)) {
+		log_info("Server address is in local network\n");
+		flags = MSG_DONTROUTE;
 	}
-	connect_to_server(ml);
+
+	void *ml = mainloop_new();
+	struct protocol *p = protocol_connect(ml, (struct sockaddr *)&saddr,
+	    flags, cfg.filename, cfg.recv_win, cfg.seed, prob_send,
+	    prob_recv, connect_callback);
 
 	mainloop_run(ml);
 	free(ml);

@@ -32,7 +32,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
-	p->sender(p->fd, pkt, len, p->flags);
+	p->send(p->fd, pkt, len, p->flags);
 
 	//Connection failed
 	if (tv->tv_sec >= 12) {
@@ -63,7 +63,7 @@ static void protocol_syn_sent(struct protocol *p) {
 struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 		 const char *filename, int recv_win, int seed,
-		 send_func sender, connect_cb cb) {
+		 send_func sendf, recv_func recvf,  connect_cb cb) {
 	struct protocol *p = protocol_new(ml);
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int myflags = 0;
@@ -74,7 +74,8 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	uint8_t *pkt = malloc(HDR_SIZE+strlen(filename));
 	int len = HDR_SIZE+strlen(filename);
 	p->window_size = recv_win;
-	p->sender = sender;
+	p->send = sendf;
+	p->recv = recvf;
 	p->filename = strdup(filename);
 	p->flags = flags;
 	p->cb = cb;
@@ -88,7 +89,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, filename, strlen(filename));
 
-	sender(sockfd, pkt, len, myflags);
+	sendf(sockfd, pkt, len, myflags);
 	free(pkt);
 
 	protocol_syn_sent(p);

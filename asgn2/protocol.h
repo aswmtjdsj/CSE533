@@ -10,6 +10,7 @@
 struct protocol;
 
 typedef int (*send_func)(int fd, uint8_t *buf, int len, int flags);
+typedef int (*recv_func)(int fd, uint8_t *buf, int len, int flags);
 typedef void (*connect_cb)(struct protocol *, int);
 
 struct protocol {
@@ -23,7 +24,8 @@ struct protocol {
 	int fd, flags;
 	int window_size;
 	void *ml, *fh;
-	send_func sender;
+	send_func send;
+	recv_func recv;
 	connect_cb cb;
 	struct random_data buf;
 	char *filename;
@@ -49,4 +51,8 @@ CASSERT(HDR_SIZE != 12, tcp_header_size);
 
 void protocol_destroy(struct protocol *);
 
+struct protocol *
+protocol_connect(void *ml, struct sockaddr *saddr, int flags,
+		 const char *filename, int recv_win, int seed,
+		 send_func sender, recv_func recvf, connect_cb cb);
 #endif

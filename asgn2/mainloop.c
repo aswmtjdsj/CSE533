@@ -24,8 +24,7 @@ struct fd {
 	struct fd *next;
 };
 
-static
-void timer_substract(struct timeval *tv1, struct timeval *tv2) {
+void timer_substract(struct timeval *tv1, const struct timeval *tv2) {
 	tv1->tv_sec -= tv2->tv_sec;
 	tv1->tv_usec -= tv2->tv_usec;
 	if (tv1->tv_usec < 0) {
@@ -33,8 +32,7 @@ void timer_substract(struct timeval *tv1, struct timeval *tv2) {
 		tv1->tv_usec+=1000000;
 	}
 }
-static
-void timer_add(struct timeval *tv1, struct timeval *tv2) {
+void timer_add(struct timeval *tv1, const struct timeval *tv2) {
 	tv1->tv_sec += tv2->tv_sec;
 	tv1->tv_usec += tv2->tv_usec;
 	if (tv1->tv_usec >= 1000000) {
