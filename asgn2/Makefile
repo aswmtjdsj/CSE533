@@ -16,7 +16,7 @@ all: $(OBJS) prifinfo_plus client server
 %.P : %.c
 	gcc -MM -MT $(<:.c=.o) -MT $(<:.c=.P) -MF $@ $<
 
-include $(OBJS:.o=.P)
+-include $(OBJS:.o=.P)
 
 prifinfo_plus: $(prifinfo_plus_OBJS)
 	$(CC) $(CFLAGS) -o prifinfo_plus $(prifinfo_plus_OBJS) $(LIBS)
