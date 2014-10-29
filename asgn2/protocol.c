@@ -79,6 +79,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	p->filename = strdup(filename);
 	p->flags = flags;
 	p->cb = cb;
+	p->window = calloc(p->window_size, sizeof(struct seg));
 	srandom_r(seed, &p->buf);
 
 	//Build syn packet

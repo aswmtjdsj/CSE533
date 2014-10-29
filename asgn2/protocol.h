@@ -13,6 +13,11 @@ typedef int (*send_func)(int fd, uint8_t *buf, int len, int flags);
 typedef int (*recv_func)(int fd, uint8_t *buf, int len, int flags);
 typedef void (*connect_cb)(struct protocol *, int);
 
+struct seg {
+	uint8_t buf[DATAGRAM_SIZE];
+	void *timeout; /* Timer used for retransmit */
+};
+
 struct protocol {
 	enum {
 		SYN_SENT,
@@ -28,9 +33,9 @@ struct protocol {
 	recv_func recv;
 	connect_cb cb;
 	struct random_data buf;
+	struct seg *window;
 	char *filename;
 };
-
 
 struct tcp_header {
 	uint32_t seq;
