@@ -11,6 +11,10 @@ ifeq ($(UNAME),SunOS)
 	CFLAGS += -DBSD_COMP
 endif
 
+%.P : %.c
+	gcc -MM -MT $(<:.c=.o) -MT $(<:.c=.P) -MF $@ $<
+
+include $(OBJS:.o=.P)
 
 all: $(OBJS) prifinfo_plus client server
 
@@ -27,4 +31,4 @@ server: $(server_OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm prifinfo_plus client server $(OBJS)
+	-rm prifinfo_plus client server $(OBJS) $(OBJS:.o=.P)
