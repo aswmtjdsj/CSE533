@@ -119,7 +119,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
-	log_info("SYN/ACK timedout, retrying...\n");
+	log_info("SYN/ACK timedout, resending SYN...\n");
 	p->send(p->fd, pkt, len, p->send_flags);
 
 	//Double the timeout
