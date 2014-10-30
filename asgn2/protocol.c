@@ -132,7 +132,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	int myflags = 0;
 	p->fd = sockfd;
 
-	int ret = connect(sockfd, (struct sockaddr *)&saddr, sizeof(saddr));
+	int ret = connect(sockfd, (struct sockaddr *)saddr, sizeof(*saddr));
 	if (ret < 0) {
 		log_warning("Failed to connect: %s\n", strerror(errno));
 		return NULL;
