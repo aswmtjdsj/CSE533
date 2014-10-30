@@ -74,16 +74,17 @@ int main(int argc, char * const *argv) {
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
 	struct sockaddr_in saddr;
-	int flags;
+	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = cfg.port;
 	saddr.sin_family = AF_INET;
-	if (islocal_addr(&saddr, 1)) {
+	ret = islocal_addr(&saddr);
+	if (ret == 2) {
 		struct sockaddr_in laddr;
 		log_info("Server address is same machine\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);
 		flags = MSG_DONTROUTE;
-	} else if (islocal_addr(&saddr, 0)) {
+	} else if (ret == 1) {
 		log_info("Server address is in local network\n");
 		flags = MSG_DONTROUTE;
 	}
