@@ -9,8 +9,8 @@
 
 struct protocol;
 
-typedef int (*send_func)(int fd, uint8_t *buf, int len, int flags);
-typedef int (*recv_func)(int fd, uint8_t *buf, int len, int flags);
+typedef ssize_t (*send_func)(int fd, uint8_t *buf, int len, int flags);
+typedef ssize_t (*recv_func)(int fd, uint8_t *buf, int len, int flags);
 typedef void (*connect_cb)(struct protocol *, int);
 
 struct seg {
@@ -28,7 +28,10 @@ struct protocol {
 	}state;
 	int fd, flags;
 	int window_size;
-	void *ml, *fh;
+	//seq is the lowest un-ack'd packet's seq
+	//ack is the lowest expected packet's seq
+	int seq, ack;
+	void *ml, *fh, *timeout;
 	send_func send;
 	recv_func recv;
 	connect_cb cb;

@@ -217,3 +217,13 @@ void *mainloop_new(void){
 	ml->maxfd = -1;
 	return ml;
 }
+
+void fd_set_cb(void *fh, fd_cb cb){
+	struct fd *fd = fh;
+	fd->cb = cb;
+}
+
+void timer_set_cb(void *th, timer_cb cb){
+	struct timer *t = th;
+	t->cb = cb;
+}

@@ -1,7 +1,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <assert.h>
 #include "protocol.h"
+#include "log.h"
 #define SYN_TIMEOUT_SEC (3)
 static struct protocol *protocol_new(void *ml) {
 	struct protocol *x = malloc(sizeof(struct protocol));
@@ -11,7 +15,53 @@ static struct protocol *protocol_new(void *ml) {
 	return x;
 }
 
-static void protocol_read_handler(void *ml, void *data, int rw) {
+static void protocol_synack_handler(void *ml, void *data, int rw) {
+	struct protocol *p = data;
+	uint8_t buf[DATAGRAM_SIZE];
+	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), p->flags);
+	if (ret <= 0) {
+		//Possibly simulated data loss
+		if (ret < 0)
+			log_warning("recv() failed: %s\n", strerror(errno));
+		return;
+	}
+	struct tcp_header *hdr = (void *)buf;
+	hdr->window_size = ntohs(hdr->window_size);
+	hdr->ack = ntohl(hdr->ack);
+	hdr->seq = ntohl(hdr->seq);
+	hdr->flags = ntohs(hdr->flags);
+
+	//Verify ack number
+	if (hdr->ack != p->seq+1) {
+		log_warning("Wrong ack number %d (%d expected), "
+		    "discard packet\n", hdr->ack, p->seq+1);
+		return;
+	}
+
+	//Verify flags
+	if (!(hdr->flags & HDR_SYN) || !(hdr->flags & HDR_ACK)) {
+		log_warning("Wrong packet type %d (SYN-ACK expected), "
+		    "discard packet\n", hdr->flags);
+		return;
+	}
+
+	//Packet is valid, stop the timer
+	timer_remove(p->ml, p->timeout);
+	p->timeout = NULL;
+	uint16_t *nport_p = (void *)(hdr+1);
+	uint16_t nport = ntohs(*nport_p);
+
+	struct sockaddr _saddr;
+	socklen_t len = sizeof(_saddr);
+	getsockname(p->fd, &_saddr, &len);
+	assert(_saddr.sa_family == AF_INET);
+	close(p->fd);
+
+	//Reconnect
+	struct sockaddr_in *saddr = (struct sockaddr_in *)&_saddr;
+	saddr->sin_port = htons(nport);
+	p->fd = socket(AF_INET, SOCK_DGRAM, 0);
+	connect(p->fd, (struct sockaddr *)saddr, len);
 }
 
 static int protocol_available_window(struct protocol *p) {
@@ -40,6 +90,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 		protocol_destroy(p);
 		return;
 	}
+
 	//Double the timeout
 	struct timeval tv2;
 	tv2.tv_sec = tv->tv_sec;
@@ -57,7 +108,7 @@ static void protocol_syn_sent(struct protocol *p) {
 	struct timeval tv;
 	tv.tv_sec = 3;
 	tv.tv_usec = 0;
-	timer_insert(p->ml, &tv, protocol_syn_timeout, p);
+	p->timeout = timer_insert(p->ml, &tv, protocol_syn_timeout, p);
 }
 
 struct protocol *
@@ -85,6 +136,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
 	hdr->seq = random();
+	p->seq = hdr->seq;
 	hdr->ack = 0;
 	hdr->window_size = protocol_available_window(p);
 	hdr->flags = HDR_SYN;
@@ -94,7 +146,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	free(pkt);
 
 	protocol_syn_sent(p);
-	p->fh = fd_insert(ml, sockfd, FD_READ, protocol_read_handler, p);
+	p->fh = fd_insert(ml, sockfd, FD_READ, protocol_synack_handler, p);
 
 	return p;
 }
