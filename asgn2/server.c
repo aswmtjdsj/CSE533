@@ -4,6 +4,9 @@
 
 int read_serv_conf(struct serv_conf * conf) {
     FILE * conf_file = fopen("server.in", "r");
+    if(conf_file == NULL) {
+        err_quit("No such file \"server.in\"!\n", errno);
+    }
     fscanf(conf_file, " %d", &(conf->port_num));
     fscanf(conf_file, " %d", &(conf->sli_win_sz));
     fclose(conf_file);
@@ -40,10 +43,9 @@ int main(int argc, char * const *argv) {
     // temp var
     u_char * yield_ptr = NULL;
     struct sockaddr_in * s_ad;
-    struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr;
-    struct sockaddr cli_addr;
+    struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr, * cli_addr = malloc(sizeof(struct sockaddr));
     char * tmp_str = NULL;
-    size_t addr_len = 0, cli_len = 0;
+    size_t addr_len = 0, cli_len = sizeof(struct sockaddr);
     int iter = 0;
 
     // only sub_net needed to be pre-allocated
@@ -53,7 +55,7 @@ int main(int argc, char * const *argv) {
     int err_ret = 0;
 
     // the two socket
-    int listen_fd, conn_fd;
+    int conn_fd;
     int on_flag = 1;
 
     // recv and send buffer
@@ -86,17 +88,22 @@ int main(int argc, char * const *argv) {
 
         // set socket and option
         if((err_ret = (sock_data_info[inter_index].sock_fd = socket(AF_INET, SOCK_DGRAM, 0))) < 0) {
-            err_quit("socket error: %e", err_ret);
+            err_quit("socket error: %e\n", err_ret);
         }
 
         if((err_ret = setsockopt(sock_data_info[inter_index].sock_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag))) < 0) {
-            err_quit("set socket option error: %e", err_ret);
+            err_quit("set socket option error: %e\n", err_ret);
         }
 
         // set server port
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_family = AF_INET;
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_port = htons(config_serv.port_num);
         // log_debug("[DEBUG] port num: %x\n", htons(config_serv.port_num));
+        
+        // bind sock to addr
+        if(bind(sock_data_info[inter_index].sock_fd, (struct sockaddr *) sock_data_info[inter_index].ip_addr, sizeof(struct sockaddr)) < 0) {
+            err_quit("bind error:%d\n", errno);
+        }
 
         // get interface netmask
         if ((net_mask = ifi->ifi_ntmaddr) != NULL) printf("  network mask: %s\n", sa_ntop(net_mask, &tmp_str, &addr_len)); 
@@ -154,21 +161,24 @@ int main(int argc, char * const *argv) {
             FD_SET(sock_data_info[iter].sock_fd, &f_s);
             max_fd_count= ((sock_data_info[iter].sock_fd > max_fd_count) ? sock_data_info[iter].sock_fd : max_fd_count) + 1;
         }
+        // log_info("[DEBUG] max fd #: %d\n", max_fd_count);
 
         if((err_ret = select(max_fd_count, &f_s, NULL, NULL, NULL)) < 0) {
             if(errno == EINTR) {
                 /* how to handle */
                 continue;
             } else {
-                err_quit("select error: %d", err_ret);
+                err_quit("select error: %d\n", err_ret);
             }
         }
+        // log_info("[DEBUG] select done\n");
 
         for(iter = 0; iter < inter_index; iter++) {
             if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
+                // log_info("[DEBUG] interface to be used: #%d\n", iter);
 
-                if(recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, &cli_addr, (socklen_t *) &cli_len) < 0) {
-                    err_quit("recvfrom error: %e", errno);
+                if(recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len) < 0) {
+                    err_quit("recvfrom error: %e\n", errno);
                 }
 
                 char filename[DATAGRAM_SIZE];
@@ -176,8 +186,8 @@ int main(int argc, char * const *argv) {
                 memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
                 memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
 
-                printf("Successfully connected from client with IP address: %s\n", sa_ntop(&cli_addr, &tmp_str, &cli_len));
-                printf("\tWith port #: %d\n", ((struct sockaddr_in *)&cli_addr)->sin_port);
+                printf("Successfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
+                printf("\tWith port #: %d\n", ((struct sockaddr_in *)cli_addr)->sin_port);
                 printf("\tRequested filename: %s\n", filename);
 
                 printf("\n");
