@@ -1,5 +1,6 @@
 #include "utils.h"
 #include "log.h"
+#include "protocol.h"
 
 int read_serv_conf(struct serv_conf * conf) {
     FILE * conf_file = fopen("server.in", "r");
@@ -40,8 +41,9 @@ int main(int argc, char * const *argv) {
     u_char * yield_ptr = NULL;
     struct sockaddr_in * s_ad;
     struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr;
+    struct sockaddr cli_addr;
     char * tmp_str = NULL;
-    size_t addr_len = 0;
+    size_t addr_len = 0, cli_len = 0;
     int iter = 0;
 
     // only sub_net needed to be pre-allocated
@@ -54,6 +56,10 @@ int main(int argc, char * const *argv) {
     int listen_fd, conn_fd;
     int on_flag = 1;
 
+    // recv and send buffer
+    uint8_t recv_dgram[DATAGRAM_SIZE], send_dgram[DATAGRAM_SIZE];
+    struct tcp_header recv_hdr, send_hdr;
+
     // get configuration
     printf("[CONFIG]\n");
     read_serv_conf(&config_serv);
@@ -65,29 +71,15 @@ int main(int argc, char * const *argv) {
         // Interface
         printf("%s: ", ifi->ifi_name);
 
-        if (ifi->ifi_index != 0)
-            printf("(%d) ", ifi->ifi_index);
+        if (ifi->ifi_index != 0) printf("(%d) ", ifi->ifi_index);
 
         print_ifi_flags(ifi);
 
-        /*if ( (ifi_hlen = ifi->ifi_hlen) > 0) {
-            ptr = ifi->ifi_haddr;
-            do {
-                printf("%s%x", (ifi_hlen == ifi->ifi_hlen) ? "  " : ":", *ptr++);
-            } while (--ifi_hlen> 0);
-            printf("\n");
-        }*/
+        if (ifi->ifi_mtu != 0) printf("  MTU: %d\n", ifi->ifi_mtu);
 
-        if (ifi->ifi_mtu != 0) {
-            printf("  MTU: %d\n", ifi->ifi_mtu);
-        }
+        if ((ip_addr = ifi->ifi_addr) != NULL) printf("  IP address: %s\n", sa_ntop(ip_addr, &tmp_str, &addr_len)); 
 
-        if ((ip_addr = ifi->ifi_addr) != NULL) {
-            printf("  IP address: %s\n", sa_ntop(ip_addr, &tmp_str, &addr_len));
-        }
-
-        // for interface array
-        
+        /* for interface array */
         // set server address
         sock_data_info[inter_index].ip_addr = malloc(sizeof(struct sockaddr));
         memcpy((void *)sock_data_info[inter_index].ip_addr, (void *)ip_addr, sizeof(struct sockaddr));
@@ -104,12 +96,10 @@ int main(int argc, char * const *argv) {
         // set server port
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_family = AF_INET;
         ((struct sockaddr_in *)sock_data_info[inter_index].ip_addr)->sin_port = htons(config_serv.port_num);
-        log_debug("[DEBUG] port num: %x\n", htons(config_serv.port_num));
+        // log_debug("[DEBUG] port num: %x\n", htons(config_serv.port_num));
 
         // get interface netmask
-        if ((net_mask = ifi->ifi_ntmaddr) != NULL) {
-            printf("  network mask: %s\n", sa_ntop(net_mask, &tmp_str, &addr_len));
-        }
+        if ((net_mask = ifi->ifi_ntmaddr) != NULL) printf("  network mask: %s\n", sa_ntop(net_mask, &tmp_str, &addr_len)); 
 
         // set interface netmask
         sock_data_info[inter_index].net_mask = malloc(sizeof(struct sockaddr));
@@ -117,6 +107,7 @@ int main(int argc, char * const *argv) {
 
         // set interface subnet
         sock_data_info[inter_index].subn_addr = malloc(sizeof(struct sockaddr));
+
         // bit-wise and
         memcpy(sub_net, net_mask, sizeof(struct sockaddr));
         ((struct sockaddr_in *)sub_net)->sin_addr.s_addr = ((struct sockaddr_in *)ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *)net_mask)->sin_addr.s_addr;
@@ -124,18 +115,15 @@ int main(int argc, char * const *argv) {
         log_debug("  [DEBUG] sub net: %s\n", sa_ntop(sub_net, &tmp_str, &addr_len));
 
         // broadcast address
-        if ((br_addr = ifi->ifi_brdaddr) != NULL) {
-            printf("  broadcast address: %s\n", sa_ntop(br_addr, &tmp_str, &addr_len));
-        }
+        if ((br_addr = ifi->ifi_brdaddr) != NULL) printf("  broadcast address: %s\n", sa_ntop(br_addr, &tmp_str, &addr_len)); 
 
         // destination address
-        if ((dst_addr = ifi->ifi_dstaddr) != NULL) {
-            printf("  destination address: %s\n", sa_ntop(dst_addr, &tmp_str, &addr_len));
-        }
+        if ((dst_addr = ifi->ifi_dstaddr) != NULL) printf("  destination address: %s\n", sa_ntop(dst_addr, &tmp_str, &addr_len)); 
 
         printf("\n");
         inter_index++; 
     }
+
     free_ifi_info(ifihead);
 
     // info for interface array
@@ -144,7 +132,8 @@ int main(int argc, char * const *argv) {
         printf("Interface #%d:\n", iter);
         log_info("\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
         printf("\tIP Address: %s\n", sa_ntop(sock_data_info[iter].ip_addr, &tmp_str, &addr_len));
-        printf("\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port)); // take care of different annotation of network and host 
+        // take care of different annotation of network and host, (ntohs, htons)
+        printf("\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port));
         printf("\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
         printf("\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
         printf("\n");
@@ -170,13 +159,28 @@ int main(int argc, char * const *argv) {
             if(errno == EINTR) {
                 /* how to handle */
                 continue;
+            } else {
+                err_quit("select error: %d", err_ret);
             }
-        } else {
-            err_quit("select error: %d", err_ret);
         }
 
         for(iter = 0; iter < inter_index; iter++) {
             if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
+
+                if(recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, &cli_addr, (socklen_t *) &cli_len) < 0) {
+                    err_quit("recvfrom error: %e", errno);
+                }
+
+                char filename[DATAGRAM_SIZE];
+
+                memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
+                memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
+
+                printf("Successfully connected from client with IP address: %s\n", sa_ntop(&cli_addr, &tmp_str, &cli_len));
+                printf("\tWith port #: %d\n", ((struct sockaddr_in *)&cli_addr)->sin_port);
+                printf("\tRequested filename: %s\n", filename);
+
+                printf("\n");
 
             }
         }
@@ -184,17 +188,10 @@ int main(int argc, char * const *argv) {
 
     // garbage collection
     printf("Cleaning junk...\n");
-    if(ip_addr != NULL) {
-        free(ip_addr);
-    }
 
-    if(net_mask != NULL) {
-        free(net_mask);
-    }
-
-    if(sub_net != NULL) {
-        free(sub_net);
-    }
+    if(ip_addr != NULL) free(ip_addr);
+    if(net_mask != NULL) free(net_mask);
+    if(sub_net != NULL) free(sub_net);
 
     for(iter = 0; iter < inter_index; iter++) {
         free(sock_data_info[iter].ip_addr);

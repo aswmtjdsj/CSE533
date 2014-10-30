@@ -210,7 +210,11 @@ check_address(struct sock_info_aux * host_addr,
 	char * tmp = NULL;
 	size_t addr_len = 0;
 	struct sockaddr_in *haddr = (struct sockaddr_in *)host_addr->ip_addr,
-	    *curaddr = (struct sockaddr_in *)cur_ip_addr->ip_addr;
+			   *mask = (struct sockaddr_in *)host_addr->net_mask,
+			   *h_sub = (struct sockaddr_in *)host_addr->subn_addr,
+			   *curaddr = (struct sockaddr_in *)cur_ip_addr->ip_addr,
+			   *c_sub = (struct sockaddr_in *)cur_ip_addr->subn_addr;
+
 	sa_ntop(host_addr->ip_addr, &tmp, &addr_len);
 
 	if (strcmp(tmp, LOOP_BACK_ADDR) == 0 ||
@@ -220,10 +224,10 @@ check_address(struct sock_info_aux * host_addr,
 	}
 	free(tmp);
 
-	if (haddr->sin_addr.s_addr == curaddr->sin_addr.s_addr ||
-	   (haddr->sin_addr.s_addr & haddr->sin_addr.s_addr) ==
-	   (curaddr->sin_addr.s_addr & curaddr->sin_addr.s_addr))
-		return FLAG_LOCAL;
+	if ((h_sub != NULL && c_sub != NULL && h_sub->sin_addr.s_addr == c_sub->sin_addr.s_addr) ||
+		(haddr->sin_addr.s_addr & mask->sin_addr.s_addr) == (curaddr->sin_addr.s_addr & mask->sin_addr.s_addr)) {
+	    return FLAG_LOCAL;
+	}
 	return FLAG_NON_LOCAL;
 }
 
