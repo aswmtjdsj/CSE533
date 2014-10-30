@@ -32,10 +32,10 @@ void timeout_handler(void *ml, void *data, const struct timeval *elapsed) {
 void sock_read_handler(void *ml, void *data, int rw) {
 }
 //Probability send/receive. drop packet at cfg.drop_rate
-int prob_send(int fd, uint8_t *buf, int len, int flags) {
+ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 	return 0;
 }
-int prob_recv(int fd, uint8_t *buf, int len, int flags) {
+ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 	return 0;
 }
 void connect_callback(struct protocol *p, int err) {
