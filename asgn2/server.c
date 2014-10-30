@@ -30,8 +30,8 @@ void print_ifi_flags(struct ifi_info * ifi) {
 }
 
 void print_dgram(const char * prompt, struct tcp_header * hdr) {
-    log_info("\t[DEBUG] %s datagram seq#: %d\n", prompt, hdr->seq);
-    log_info("\t[DEBUG] %s datagram ack#: %d\n", prompt, hdr->ack);
+    log_info("\t[DEBUG] %s datagram seq#: %u\n", prompt, hdr->seq);
+    log_info("\t[DEBUG] %s datagram ack#: %u\n", prompt, hdr->ack);
     if(hdr->flags & HDR_ACK) {
         log_info("\t[DEBUG] %s datagram flagged with: ACK\n", prompt);
     }
@@ -69,9 +69,6 @@ int main(int argc, char * const *argv) {
     // only sub_net needed to be pre-allocated
     sub_net = malloc(sizeof(struct sockaddr));
 
-    // err ret
-    int err_ret = 0;
-
     // the two socket
     int conn_fd;
     int on_flag = 1;
@@ -105,12 +102,12 @@ int main(int argc, char * const *argv) {
         memcpy((void *)sock_data_info[inter_index].ip_addr, (void *)ip_addr, sizeof(struct sockaddr));
 
         // set socket and option
-        if((err_ret = (sock_data_info[inter_index].sock_fd = socket(AF_INET, SOCK_DGRAM, 0))) < 0) {
-            err_quit("socket error: %e\n", err_ret);
+        if((sock_data_info[inter_index].sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+            err_quit("socket error: %e\n", errno);
         }
 
-        if((err_ret = setsockopt(sock_data_info[inter_index].sock_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag))) < 0) {
-            err_quit("set socket option error: %e\n", err_ret);
+        if(setsockopt(sock_data_info[inter_index].sock_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag)) < 0) {
+            err_quit("set socket option error: %e\n", errno);
         }
 
         // set server port
@@ -120,7 +117,7 @@ int main(int argc, char * const *argv) {
         
         // bind sock to addr
         if(bind(sock_data_info[inter_index].sock_fd, (struct sockaddr *) sock_data_info[inter_index].ip_addr, sizeof(struct sockaddr)) < 0) {
-            err_quit("bind error:%d\n", errno);
+            err_quit("bind error: %e\n", errno);
         }
 
         // get interface netmask
@@ -181,12 +178,12 @@ int main(int argc, char * const *argv) {
         }
         // log_info("[DEBUG] max fd #: %d\n", max_fd_count);
 
-        if((err_ret = select(max_fd_count, &f_s, NULL, NULL, NULL)) < 0) {
+        if(select(max_fd_count, &f_s, NULL, NULL, NULL) < 0) {
             if(errno == EINTR) {
                 /* how to handle */
                 continue;
             } else {
-                err_quit("select error: %d\n", err_ret);
+                err_quit("select error: %e\n", errno);
             }
         }
         // log_info("[DEBUG] select done\n");
@@ -205,6 +202,11 @@ int main(int argc, char * const *argv) {
 
                 memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
                 memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
+
+                recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
+                recv_hdr.seq = ntohl(recv_hdr.seq);
+                recv_hdr.flags = ntohs(recv_hdr.flags);
+                recv_hdr.window_size = ntohs(recv_hdr.window_size);
                 filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
                 // I should terminate the string by myself
 
@@ -226,7 +228,7 @@ int main(int argc, char * const *argv) {
 
                     memcpy(chi_addr, sock_data_info[iter].ip_addr, sizeof(struct sockaddr));
 
-                    int flags = -1, send_flag = 0;
+                    int flags = -1, send_flag = 0, listen_fd = sock_data_info[iter].sock_fd;
 
                     flags = check_address(sock_data_info + iter, cli_addr);
                     if(flags == FLAG_NON_LOCAL) {
@@ -235,11 +237,81 @@ int main(int argc, char * const *argv) {
                         printf("Client address is a local address!\n");
                         send_flag = MSG_DONTROUTE;
                     } else if(flags == FLAG_LOOP_BACK) {
-                        printf("Client address is a loop-back address!\n");
+                        printf("Client address is a loop-back address! (Server and Client are in the same machine)\n");
                         send_flag = MSG_DONTROUTE;
                     } else {
                         err_quit("There must be something wrong with check_address func!\n", 0);
                     }
+
+                    printf("[INFO]\n");
+                    printf("Server: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
+                    printf("Client: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
+                    printf("\n");
+
+                    // Now child has its derived listening socket still open
+                    // Time to create connection socket and bind it
+                    if((conn_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+                        err_quit("socket error: %e\n", errno);
+                    }
+
+                    // set sock option for connection sock
+                    on_flag = 1;
+                    if(setsockopt(conn_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag)) < 0) {
+                        err_quit("set socket option error: %e\n", errno);
+                    }
+
+                    // set port for conn
+                    ((struct sockaddr_in *)chi_addr)->sin_family = AF_INET;
+                    ((struct sockaddr_in *)chi_addr)->sin_port = htons(0); // for wildcard
+
+                    // bind conn sock
+                    if(bind(conn_fd, chi_addr, sizeof(struct sockaddr)) < 0) {
+                        err_quit("bind error: %e\n", errno);
+                    }
+
+                    // use getsockname to get the bound ip and the ephemeral port for later use
+                    if(getsockname(conn_fd, chi_addr, (socklen_t *) &chi_len) < 0) {
+                        err_quit("getsockname error: %e\n", errno);
+                    }
+
+                    printf("After binding the connection socket to the Server ip address by the child>\n");
+                    printf("\tServer IP: %s\n", sa_ntop(chi_addr, &tmp_str, &addr_len));
+                    printf("\tServer port: %d\n", ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
+                    printf("\n");
+                            
+                    // TODO
+                    // should not treat the retransmitted SYN as the new incoming dgram
+
+                    // connect the client via connection socket
+                    if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
+                        err_quit("connect error: %e\n", errno);
+                    }
+
+                    // tell the client the conn socket via listening socket
+                    send_hdr.seq = random();
+                    send_hdr.ack = recv_hdr.seq + 1;
+                    send_hdr.flags = HDR_ACK | HDR_SYN;
+                    send_hdr.window_size = 0; /* TODO */
+                    uint16_t port_to_tell = ntohs(((struct sockaddr_in *)chi_addr)->sin_port);
+                    int sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
+
+                    printf("Server child is sending the port of newly created connection socket back to the client>\n");
+                    printf("[DEBUG] Sent datagram size: %d\n", sent_size);
+                    print_dgram("Sent", &send_hdr);
+                    printf("\tport for conn socket #: %d\n", port_to_tell);
+
+                    send_hdr.seq = htonl(send_hdr.seq); // host to network representation
+                    send_hdr.ack = htonl(send_hdr.ack);
+                    send_hdr.flags = htons(send_hdr.flags);
+                    send_hdr.window_size = htons(send_hdr.window_size); 
+                    memcpy(send_dgram, &send_hdr, sizeof(struct tcp_header));
+                    memcpy(send_dgram+sizeof(struct tcp_header), &port_to_tell, sizeof(uint16_t));
+
+                    if((sent_size = sendto(listen_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
+                                    cli_addr, cli_len)) < 0) {
+                        err_quit("sendto error: %e\n", errno);
+                    }
+
                 } else {
                     break; // parent
                 }
