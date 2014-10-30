@@ -169,8 +169,8 @@ int main(int argc, char * const *argv) {
     // fork a child to handle incoming conn
     pid_t child_pid;
 
-    printf("Expecting upcoming datagram...\n");
     for( ; ; ) {
+        printf("Expecting upcoming datagram...\n");
         max_fd_count = 0;
         for(iter = 0; iter < inter_index; iter++) {
             FD_SET(sock_data_info[iter].sock_fd, &f_s);
@@ -214,7 +214,7 @@ int main(int argc, char * const *argv) {
                 /* should deal with seq and flags during ensuring stability */
 
                 printf("\nSuccessfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
-                printf("\tWith port #: %d\n", ((struct sockaddr_in *)cli_addr)->sin_port);
+                printf("\tWith port #: %d\n", ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
                 log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
                 print_dgram("Received", &recv_hdr);
                 printf("\tRequested filename: %s\n\n", filename);
@@ -283,22 +283,24 @@ int main(int argc, char * const *argv) {
                     // should not treat the retransmitted SYN as the new incoming dgram
 
                     // connect the client via connection socket
-                    if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
+                    // TODO
+                    // shouldn't we use connect here?
+                    /*if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
                         err_quit("connect error: %e\n", errno);
-                    }
+                    }*/
 
                     // tell the client the conn socket via listening socket
                     send_hdr.seq = random();
                     send_hdr.ack = recv_hdr.seq + 1;
                     send_hdr.flags = HDR_ACK | HDR_SYN;
                     send_hdr.window_size = 0; /* TODO */
-                    uint16_t port_to_tell = ntohs(((struct sockaddr_in *)chi_addr)->sin_port);
+                    uint16_t port_to_tell = ((struct sockaddr_in *)chi_addr)->sin_port;
                     int sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
 
                     printf("Server child is sending the port of newly created connection socket back to the client>\n");
-                    printf("[DEBUG] Sent datagram size: %d\n", sent_size);
+                    printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                     print_dgram("Sent", &send_hdr);
-                    printf("\tport for conn socket #: %d\n", port_to_tell);
+                    printf("\tport for conn socket #: %d\n", ntohs(port_to_tell));
 
                     send_hdr.seq = htonl(send_hdr.seq); // host to network representation
                     send_hdr.ack = htonl(send_hdr.ack);
@@ -313,8 +315,14 @@ int main(int argc, char * const *argv) {
                     } // TODO
                     // retransmission needed
 
-                    // 3rd handshake, listening socket receive ACK from client
-                    if((recv_size = recvfrom(listen_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
+                    /*
+                     * Note that this implies that, in the event of the server timing out, 
+                     * it should retransmit two copies of its ‘ephemeral port number’ message, 
+                     * one on its ‘listening’ socket and the other on its ‘connection’ socket (why?).
+                     * for that, server doesn't know client's sock is currently connecting to which sock of server
+                     * */
+                    // 3rd handshake, connection socket receive ACK from client
+                    if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                         err_quit("recvfrom error: %e\n", errno);
                     }
                     memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
@@ -322,14 +330,18 @@ int main(int argc, char * const *argv) {
                     recv_hdr.seq = ntohl(recv_hdr.seq);
                     recv_hdr.flags = ntohs(recv_hdr.flags);
                     recv_hdr.window_size = ntohs(recv_hdr.window_size);
-                    printf("It supposed to be the 3rd handshake while listening socket received a datagram from client>\n");
+                    printf("It supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
                     print_dgram("Received", &recv_hdr);
-                    if(recv_hdr.ack == send_hdr.seq + 1) {
+                    if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
                         printf("3rd handshake succeeded! Listening socket of server child gonna close!\n");
+                        close(listen_fd);
                     } else {
-                        printf("Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, send_hdr.seq+1);
+                        printf("Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                     }
 
+                    // data transfer
+                    // TODO
+                    exit(0);
                 } else {
                     break; // parent
                 }
