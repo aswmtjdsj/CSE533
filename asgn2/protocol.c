@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
+#include <fcntl.h>
 #include "protocol.h"
 #include "log.h"
 #define SYN_TIMEOUT_SEC (3)
@@ -13,6 +14,10 @@ static struct protocol *protocol_new(void *ml) {
 	x->ml = ml;
 	x->window_size = 10;
 	return x;
+}
+
+static int protocol_available_window(struct protocol *p) {
+	return 0;
 }
 
 static void protocol_synack_handler(void *ml, void *data, int rw) {
@@ -61,11 +66,28 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	struct sockaddr_in *saddr = (struct sockaddr_in *)&_saddr;
 	saddr->sin_port = htons(nport);
 	p->fd = socket(AF_INET, SOCK_DGRAM, 0);
-	connect(p->fd, (struct sockaddr *)saddr, len);
-}
+	ret = connect(p->fd, (struct sockaddr *)saddr, len);
+	if (ret < 0) {
+		log_warning("Failed to re-connect: %s\n", strerror(errno));
+		p->cb(p, errno);
+	}
 
-static int protocol_available_window(struct protocol *p) {
-	return 0;
+	ret = fcntl(p->fd, F_SETFL, O_NONBLOCK);
+	if (ret < 0) {
+		log_warning("Failed to set non blocking socket: %s\n",
+		    strerror(errno));
+		close(p->fd);
+		p->cb(p, errno);
+	}
+
+	//Send ACK
+	uint32_t tmp = hdr->ack;
+	hdr->ack = htonl(hdr->seq+1);
+	hdr->seq = htonl(tmp);
+	hdr->flags = HDR_ACK;
+	hdr->window_size = htons(protocol_available_window(p));
+	p->send(p->fd, buf, DATAGRAM_SIZE, p->flags);
+	p->state = ESTABLISHED;
 }
 
 static void
@@ -78,7 +100,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
 	hdr->seq = random();
 	hdr->ack = 0;
-	hdr->window_size = protocol_available_window(p);
+	hdr->window_size = htons(protocol_available_window(p));
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
@@ -99,18 +121,6 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	timer_insert(p->ml, &tv2, protocol_syn_timeout, p);
 }
 
-/* protocol_syn_sent: notify that a syn packet is sent
- * this will cause the a state change to SYN_SENT, and a
- * timer will be inserted into the mainloop.
- */
-static void protocol_syn_sent(struct protocol *p) {
-	p->state = SYN_SENT;
-	struct timeval tv;
-	tv.tv_sec = 3;
-	tv.tv_usec = 0;
-	p->timeout = timer_insert(p->ml, &tv, protocol_syn_timeout, p);
-}
-
 struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 		 const char *filename, int recv_win, int seed,
@@ -120,7 +130,18 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	int myflags = 0;
 	p->fd = sockfd;
 
-	connect(sockfd, (struct sockaddr *)&saddr, sizeof(saddr));
+	int ret = connect(sockfd, (struct sockaddr *)&saddr, sizeof(saddr));
+	if (ret < 0) {
+		log_warning("Failed to connect: %s\n", strerror(errno));
+		return NULL;
+	}
+
+	ret = fcntl(sockfd, F_SETFL, O_NONBLOCK);
+	if (ret < 0) {
+		log_warning("Failed to set non blocking: %s\n", strerror(errno));
+		close(sockfd);
+		return NULL;
+	}
 
 	uint8_t *pkt = malloc(HDR_SIZE+strlen(filename));
 	int len = HDR_SIZE+strlen(filename);
@@ -138,14 +159,19 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	hdr->seq = random();
 	p->seq = hdr->seq;
 	hdr->ack = 0;
-	hdr->window_size = protocol_available_window(p);
+	hdr->window_size = htons(protocol_available_window(p));
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, filename, strlen(filename));
 
 	sendf(sockfd, pkt, len, myflags);
 	free(pkt);
 
-	protocol_syn_sent(p);
+	//Change state
+	p->state = SYN_SENT;
+	struct timeval tv;
+	tv.tv_sec = 3;
+	tv.tv_usec = 0;
+	p->timeout = timer_insert(p->ml, &tv, protocol_syn_timeout, p);
 	p->fh = fd_insert(ml, sockfd, FD_READ, protocol_synack_handler, p);
 
 	return p;
