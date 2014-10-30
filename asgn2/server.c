@@ -29,6 +29,21 @@ void print_ifi_flags(struct ifi_info * ifi) {
     printf(">\n");
 }
 
+void print_dgram(const char * prompt, struct tcp_header * hdr) {
+    log_info("\t[DEBUG] %s datagram seq#: %d\n", prompt, hdr->seq);
+    log_info("\t[DEBUG] %s datagram ack#: %d\n", prompt, hdr->ack);
+    if(hdr->flags & HDR_ACK) {
+        log_info("\t[DEBUG] %s datagram flagged with: ACK\n", prompt);
+    }
+    if(hdr->flags & HDR_SYN) {
+        log_info("\t[DEBUG] %s datagram flagged with: SYN\n", prompt);
+    }
+    if(hdr->flags & HDR_FIN) {
+        log_info("\t[DEBUG] %s datagram flagged with: FIN\n", prompt);
+    }
+    log_info("\t[DEBUG] %s datagram window size: %d\n", prompt, hdr->window_size);
+}
+
 int main(int argc, char * const *argv) {
 
     // server configuration
@@ -43,9 +58,12 @@ int main(int argc, char * const *argv) {
     // temp var
     u_char * yield_ptr = NULL;
     struct sockaddr_in * s_ad;
-    struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr, * cli_addr = malloc(sizeof(struct sockaddr));
+    struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr, 
+                    * cli_addr = malloc(sizeof(struct sockaddr)),
+                    * chi_addr = malloc(sizeof(struct sockaddr)); // cauz that
+    // the last param for recvfrom func, should be initialized, which is a value-reference param
     char * tmp_str = NULL;
-    size_t addr_len = 0, cli_len = sizeof(struct sockaddr);
+    size_t addr_len = 0, cli_len = sizeof(struct sockaddr), chi_len = sizeof(struct sockaddr);
     int iter = 0;
 
     // only sub_net needed to be pre-allocated
@@ -177,7 +195,9 @@ int main(int argc, char * const *argv) {
             if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
                 // log_info("[DEBUG] interface to be used: #%d\n", iter);
 
-                if(recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len) < 0) {
+                // receive the client's first hand-shake
+                int recv_size = 0;
+                if((recv_size = recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                     err_quit("recvfrom error: %e\n", errno);
                 }
 
@@ -185,12 +205,44 @@ int main(int argc, char * const *argv) {
 
                 memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
                 memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
+                filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
+                // I should terminate the string by myself
 
-                printf("Successfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
+                // TODO
+                /* should deal with seq and flags during ensuring stability */
+
+                printf("\nSuccessfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
                 printf("\tWith port #: %d\n", ((struct sockaddr_in *)cli_addr)->sin_port);
-                printf("\tRequested filename: %s\n", filename);
+                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+                print_dgram("Received", &recv_hdr);
+                printf("\tRequested filename: %s\n\n", filename);
 
-                printf("\n");
+                /* fork child to handle this specific request 
+                 * and parent go on waiting for incoming clients
+                 * */
+
+                if((child_pid = fork()) == 0) { // child
+                    printf("Server child forked!\n");
+
+                    memcpy(chi_addr, sock_data_info[iter].ip_addr, sizeof(struct sockaddr));
+
+                    int flags = -1, send_flag = 0;
+
+                    flags = check_address(sock_data_info + iter, cli_addr);
+                    if(flags == FLAG_NON_LOCAL) {
+                        printf("Client address doesn\'t belong to local network!\n");
+                    } else if(flags == FLAG_LOCAL) {
+                        printf("Client address is a local address!\n");
+                        send_flag = MSG_DONTROUTE;
+                    } else if(flags == FLAG_LOOP_BACK) {
+                        printf("Client address is a loop-back address!\n");
+                        send_flag = MSG_DONTROUTE;
+                    } else {
+                        err_quit("There must be something wrong with check_address func!\n", 0);
+                    }
+                } else {
+                    break; // parent
+                }
 
             }
         }
@@ -202,6 +254,7 @@ int main(int argc, char * const *argv) {
     if(ip_addr != NULL) free(ip_addr);
     if(net_mask != NULL) free(net_mask);
     if(sub_net != NULL) free(sub_net);
+    if(cli_addr != NULL) free(cli_addr);
 
     for(iter = 0; iter < inter_index; iter++) {
         free(sock_data_info[iter].ip_addr);

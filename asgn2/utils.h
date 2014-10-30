@@ -49,7 +49,7 @@ struct sock_info_aux {
 struct ifi_info *get_ifi_info(int, int);
 void free_ifi_info(struct ifi_info *);
 const char *sa_ntop(struct sockaddr *, char **, size_t *);
-int check_address(struct sock_info_aux  *, struct sock_info_aux *); // see line 43-45 for returning value
+int check_address(struct sock_info_aux *, struct sockaddr *); // see line 43-45 for returning value
 int islocal_addr(struct sockaddr_in *);
 
 static void __attribute__((noreturn))

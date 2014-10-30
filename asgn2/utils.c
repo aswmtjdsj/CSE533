@@ -206,26 +206,25 @@ free_ifi_info(struct ifi_info *ifihead)
 
 int
 check_address(struct sock_info_aux * host_addr,
-	      struct sock_info_aux * cur_ip_addr) {
+	      struct sockaddr * cur_addr) {
 	char * tmp = NULL;
 	size_t addr_len = 0;
-	struct sockaddr_in *haddr = (struct sockaddr_in *)host_addr->ip_addr,
-			   *mask = (struct sockaddr_in *)host_addr->net_mask,
-			   *h_sub = (struct sockaddr_in *)host_addr->subn_addr,
-			   *curaddr = (struct sockaddr_in *)cur_ip_addr->ip_addr,
-			   *c_sub = (struct sockaddr_in *)cur_ip_addr->subn_addr;
+	struct sockaddr_in *h_addr = (struct sockaddr_in *)host_addr->ip_addr,
+			   *h_mask = (struct sockaddr_in *)host_addr->net_mask,
+			   *h_sub = (struct sockaddr_in *)host_addr->subn_addr;
 
-	sa_ntop(host_addr->ip_addr, &tmp, &addr_len);
-
-	if (strcmp(tmp, LOOP_BACK_ADDR) == 0 ||
-	    haddr->sin_addr.s_addr == curaddr->sin_addr.s_addr) {
+	if (strcmp(sa_ntop(host_addr->ip_addr, &tmp, &addr_len), LOOP_BACK_ADDR) == 0 ||
+		h_addr->sin_addr.s_addr == ((struct sockaddr_in *)cur_addr)->sin_addr.s_addr) {
+	    if(tmp != NULL) {
 		free(tmp);
-		return FLAG_LOOP_BACK;
+	    }
+	    return FLAG_LOOP_BACK;
 	}
-	free(tmp);
+	if(tmp != NULL) {
+	    free(tmp);
+	}
 
-	if ((h_sub != NULL && c_sub != NULL && h_sub->sin_addr.s_addr == c_sub->sin_addr.s_addr) ||
-		(haddr->sin_addr.s_addr & mask->sin_addr.s_addr) == (curaddr->sin_addr.s_addr & mask->sin_addr.s_addr)) {
+	if ((h_addr->sin_addr.s_addr & h_mask->sin_addr.s_addr) == (((struct sockaddr_in *)cur_addr)->sin_addr.s_addr & h_mask->sin_addr.s_addr)) {
 	    return FLAG_LOCAL;
 	}
 	return FLAG_NON_LOCAL;
