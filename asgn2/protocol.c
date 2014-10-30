@@ -23,7 +23,7 @@ static int protocol_available_window(struct protocol *p) {
 static void protocol_synack_handler(void *ml, void *data, int rw) {
 	struct protocol *p = data;
 	uint8_t buf[DATAGRAM_SIZE];
-	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), p->flags);
+	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
 	if (ret <= 0) {
 		//Possibly simulated data loss
 		if (ret < 0)
@@ -86,7 +86,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->seq = htonl(tmp);
 	hdr->flags = HDR_ACK;
 	hdr->window_size = htons(protocol_available_window(p));
-	p->send(p->fd, buf, DATAGRAM_SIZE, p->flags);
+	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
 
 	p->cb(p, 0);
@@ -106,7 +106,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
-	p->send(p->fd, pkt, len, p->flags);
+	p->send(p->fd, pkt, len, p->send_flags);
 
 	//Connection failed
 	if (tv->tv_sec >= 12) {
@@ -124,7 +124,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 }
 
 struct protocol *
-protocol_connect(void *ml, struct sockaddr *saddr, int flags,
+protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 		 const char *filename, int recv_win, int seed,
 		 send_func sendf, recv_func recvf,  connect_cb cb) {
 	struct protocol *p = protocol_new(ml);
@@ -151,7 +151,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 	p->send = sendf;
 	p->recv = recvf;
 	p->filename = strdup(filename);
-	p->flags = flags;
+	p->send_flags = send_flags;
 	p->cb = cb;
 	p->window = calloc(p->window_size, sizeof(struct seg));
 	srandom_r(seed, &p->buf);

@@ -26,7 +26,7 @@ struct protocol {
 		CLOSED,
 		LAST_ACK,
 	}state;
-	int fd, flags;
+	int fd, send_flags;
 	int window_size;
 	//seq is the lowest un-ack'd packet's seq
 	//ack is the lowest expected packet's seq
