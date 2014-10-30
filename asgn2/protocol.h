@@ -26,7 +26,7 @@ struct protocol {
 		CLOSED,
 		LAST_ACK,
 	}state;
-	int fd, flags;
+	int fd, send_flags;
 	int window_size;
 	//seq is the lowest un-ack'd packet's seq
 	//ack is the lowest expected packet's seq
@@ -35,7 +35,6 @@ struct protocol {
 	send_func send;
 	recv_func recv;
 	connect_cb cb;
-	struct random_data buf;
 	struct seg *window;
 	char *filename;
 };
@@ -61,6 +60,6 @@ void protocol_destroy(struct protocol *);
 
 struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int flags,
-		 const char *filename, int recv_win, int seed,
-		 send_func sender, recv_func recvf, connect_cb cb);
+		 const char *filename, int recv_win, send_func sender,
+		 recv_func recvf, connect_cb cb);
 #endif

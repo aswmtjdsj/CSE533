@@ -33,10 +33,10 @@ void sock_read_handler(void *ml, void *data, int rw) {
 }
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
-	return 0;
+	return send(fd, buf, len, flags);
 }
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
-	return 0;
+	return recv(fd, buf, len, flags);
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == ETIMEDOUT) {
@@ -51,6 +51,10 @@ int main(int argc, char * const *argv) {
 	else
 		cfgname = "client.in";
 	FILE *cfgfile = fopen(cfgname, "r");
+	if (!cfgfile) {
+		log_warning("Failed to open %s\n", cfgname);
+		return 1;
+	}
 	srandom(time(NULL));
 
 	fgets(cfg.addr, sizeof(cfg.addr), cfgfile);
@@ -74,24 +78,25 @@ int main(int argc, char * const *argv) {
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
 	struct sockaddr_in saddr;
-	int flags;
+	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
-	saddr.sin_port = cfg.port;
+	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;
-	if (islocal_addr(&saddr, 1)) {
+	ret = islocal_addr(&saddr);
+	if (ret == 2) {
 		struct sockaddr_in laddr;
 		log_info("Server address is same machine\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);
 		flags = MSG_DONTROUTE;
-	} else if (islocal_addr(&saddr, 0)) {
+	} else if (ret == 1) {
 		log_info("Server address is in local network\n");
 		flags = MSG_DONTROUTE;
 	}
 
 	void *ml = mainloop_new();
 	struct protocol *p = protocol_connect(ml, (struct sockaddr *)&saddr,
-	    flags, cfg.filename, cfg.recv_win, cfg.seed, prob_send,
-	    prob_recv, connect_callback);
+	    flags, cfg.filename, cfg.recv_win, prob_send, prob_recv,
+	    connect_callback);
 
 	mainloop_run(ml);
 	free(ml);

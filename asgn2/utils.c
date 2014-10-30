@@ -231,7 +231,7 @@ check_address(struct sock_info_aux * host_addr,
 	return FLAG_NON_LOCAL;
 }
 
-int islocal_addr(struct sockaddr_in *saddr, int loopback) {
+int islocal_addr(struct sockaddr_in *saddr) {
 	struct ifi_info *head = get_ifi_info(AF_INET, 1), *iter;
 	int ret = 0;
 	iter = head;
@@ -240,17 +240,17 @@ int islocal_addr(struct sockaddr_in *saddr, int loopback) {
 		    ->sin_addr.s_addr;
 		in_addr_t ifi_nm = ((struct sockaddr_in *)iter->ifi_ntmaddr)
 		    ->sin_addr.s_addr;
-		if (loopback) {
-			if (ifi_addr == saddr->sin_addr.s_addr) {
-				ret = 1;
+		if (ifi_addr == saddr->sin_addr.s_addr) {
+			ret = 2;
+			break;
+		}
+		if ((ifi_addr & ifi_nm) ==
+		    (saddr->sin_addr.s_addr & ifi_nm)) {
+			if (iter->ifi_flags & IFF_LOOPBACK) {
+				ret = 2;
 				break;
 			}
-		} else {
-			if ((ifi_addr & ifi_nm) ==
-			    (saddr->sin_addr.s_addr & ifi_nm)) {
-				ret = 1;
-				break;
-			}
+			ret = 1;
 		}
 		iter = iter->ifi_next;
 	}
