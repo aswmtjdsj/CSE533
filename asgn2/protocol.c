@@ -87,7 +87,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	uint32_t tmp = hdr->ack;
 	hdr->ack = htonl(hdr->seq+1);
 	hdr->seq = htonl(tmp);
-	hdr->flags = HDR_ACK;
+	hdr->flags = htons(HDR_ACK);
 	hdr->window_size = htons(protocol_available_window(p));
 	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
@@ -116,7 +116,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	hdr->seq = random();
 	hdr->ack = 0;
 	hdr->window_size = htons(protocol_available_window(p));
-	hdr->flags = HDR_SYN;
+	hdr->flags = htons(HDR_SYN);
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
 	log_info("SYN/ACK timedout, resending SYN...\n");
@@ -169,7 +169,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	p->seq = hdr->seq;
 	hdr->ack = 0;
 	hdr->window_size = htons(protocol_available_window(p));
-	hdr->flags = HDR_SYN;
+	hdr->flags = htons(HDR_SYN);
 	memcpy(hdr+1, filename, strlen(filename));
 
 	sendf(sockfd, pkt, len, myflags);
