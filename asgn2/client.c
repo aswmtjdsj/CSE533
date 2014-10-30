@@ -33,10 +33,10 @@ void sock_read_handler(void *ml, void *data, int rw) {
 }
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
-	return 0;
+	return send(fd, buf, len, flags);
 }
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
-	return 0;
+	return recv(fd, buf, len, flags);
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == ETIMEDOUT) {
