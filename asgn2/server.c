@@ -310,6 +310,24 @@ int main(int argc, char * const *argv) {
                     if((sent_size = sendto(listen_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
                                     cli_addr, cli_len)) < 0) {
                         err_quit("sendto error: %e\n", errno);
+                    } // TODO
+                    // retransmission needed
+
+                    // 3rd handshake, listening socket receive ACK from client
+                    if((recv_size = recvfrom(listen_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
+                        err_quit("recvfrom error: %e\n", errno);
+                    }
+                    memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
+                    recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
+                    recv_hdr.seq = ntohl(recv_hdr.seq);
+                    recv_hdr.flags = ntohs(recv_hdr.flags);
+                    recv_hdr.window_size = ntohs(recv_hdr.window_size);
+                    printf("It supposed to be the 3rd handshake while listening socket received a datagram from client>\n");
+                    print_dgram("Received", &recv_hdr);
+                    if(recv_hdr.ack == send_hdr.seq + 1) {
+                        printf("3rd handshake succeeded! Listening socket of server child gonna close!\n");
+                    } else {
+                        printf("Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, send_hdr.seq+1);
                     }
 
                 } else {
