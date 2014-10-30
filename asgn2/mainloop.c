@@ -142,12 +142,12 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 	int count = 0;
 	gettimeofday(&start, NULL);
 	while(1) {
-		struct timer *nt = tt->next;
 		struct timeval realtv;
 		if (timer_cmp(&tt->tv, elapse) > 0) {
 			timer_substract(&tt->tv, elapse);
 			break;
 		}
+		ml->timers = tt->next;
 		if (tt->cb) {
 			realtv = *elapse;
 			timer_substract(&realtv, &tt->tv);
@@ -163,12 +163,11 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 		timer_add(elapse, &end);
 		timer_substract(elapse, &tt->tv);
 		free(tt);
-		tt = nt;
+		tt = ml->timers;
 		if (!tt)
 			break;
 	}
 	log_debug("Elapse end\n");
-	ml->timers = tt;
 }
 
 void mainloop_run(void *data) {
@@ -188,15 +187,26 @@ void mainloop_run(void *data) {
 				FD_SET(tfd->fd, &wfds);
 			tfd = tfd->next;
 		}
-		struct timeval nowtv, ntv = ml->timers->tv;
-		gettimeofday(&nowtv, NULL);
-		timer_substract(&nowtv, &lasttv);
-		timer_substract(&ntv, &nowtv);
-		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, &ntv);
-		gettimeofday(&nowtv, NULL);
-		timer_substract(&nowtv, &lasttv);
+
+		struct timeval nowtv, ntv;
+		struct timeval *ntvp = NULL;
+		if (ml->timers) {
+			ntv = ml->timers->tv;
+			ntvp = &ntv;
+			gettimeofday(&nowtv, NULL);
+			timer_substract(&nowtv, &lasttv);
+			timer_substract(&ntv, &nowtv);
+		}
+
+		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, ntvp);
+
+		if (ml->timers) {
+			gettimeofday(&nowtv, NULL);
+			timer_substract(&nowtv, &lasttv);
+			timer_elapse(ml, &nowtv);
+		}
+
 		gettimeofday(&lasttv, NULL);
-		timer_elapse(ml, &nowtv);
 		if (ret <= 0)
 			continue;
 		tfd = ml->fds;

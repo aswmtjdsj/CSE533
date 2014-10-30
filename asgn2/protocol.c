@@ -50,6 +50,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 		return;
 	}
 
+	log_info("Packet valid, continuing...\n");
 	//Packet is valid, stop the timer
 	timer_remove(p->ml, p->timeout);
 	p->timeout = NULL;
@@ -80,6 +81,8 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 		p->cb(p, errno);
 	}
 
+	log_debug("Reconnected\n");
+
 	//Send ACK
 	uint32_t tmp = hdr->ack;
 	hdr->ack = htonl(hdr->seq+1);
@@ -88,6 +91,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->window_size = htons(protocol_available_window(p));
 	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
+	log_debug("ACK sent\n");
 
 	p->cb(p, 0);
 }
@@ -98,6 +102,15 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	uint8_t *pkt = malloc(HDR_SIZE+strlen(p->filename));
 	int len = HDR_SIZE+strlen(p->filename);
 
+	//Connection failed
+	if (tv->tv_sec >= 12) {
+		log_warning("Maximum number of timedouts reached, "
+		    "giving up...\n");
+		p->cb(p, ETIMEDOUT);
+		protocol_destroy(p);
+		return;
+	}
+
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
 	hdr->seq = random();
@@ -106,14 +119,8 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	hdr->flags = HDR_SYN;
 	memcpy(hdr+1, p->filename, strlen(p->filename));
 
+	log_info("SYN/ACK timedout, retrying...\n");
 	p->send(p->fd, pkt, len, p->send_flags);
-
-	//Connection failed
-	if (tv->tv_sec >= 12) {
-		p->cb(p, ETIMEDOUT);
-		protocol_destroy(p);
-		return;
-	}
 
 	//Double the timeout
 	struct timeval tv2;
@@ -121,6 +128,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	tv2.tv_usec = 0;
 	timer_add(&tv2, &tv2);
 	timer_insert(p->ml, &tv2, protocol_syn_timeout, p);
+	log_info("Next SYN timeout: %lfs\n", tv2.tv_sec+tv2.tv_usec/1e6);
 }
 
 struct protocol *
@@ -145,8 +153,8 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 		return NULL;
 	}
 
-	uint8_t *pkt = malloc(HDR_SIZE+strlen(filename));
 	int len = HDR_SIZE+strlen(filename);
+	uint8_t *pkt = malloc(len);
 	p->window_size = recv_win;
 	p->send = sendf;
 	p->recv = recvf;
