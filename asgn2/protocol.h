@@ -35,7 +35,6 @@ struct protocol {
 	send_func send;
 	recv_func recv;
 	connect_cb cb;
-	struct random_data buf;
 	struct seg *window;
 	char *filename;
 };
@@ -61,6 +60,6 @@ void protocol_destroy(struct protocol *);
 
 struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int flags,
-		 const char *filename, int recv_win, int seed,
-		 send_func sender, recv_func recvf, connect_cb cb);
+		 const char *filename, int recv_win, send_func sender,
+		 recv_func recvf, connect_cb cb);
 #endif

@@ -125,8 +125,8 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 
 struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
-		 const char *filename, int recv_win, int seed,
-		 send_func sendf, recv_func recvf,  connect_cb cb) {
+		 const char *filename, int recv_win, send_func sendf,
+		 recv_func recvf,  connect_cb cb) {
 	struct protocol *p = protocol_new(ml);
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int myflags = 0;
@@ -154,7 +154,6 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	p->send_flags = send_flags;
 	p->cb = cb;
 	p->window = calloc(p->window_size, sizeof(struct seg));
-	srandom_r(seed, &p->buf);
 
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;

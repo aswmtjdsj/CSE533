@@ -90,8 +90,8 @@ int main(int argc, char * const *argv) {
 
 	void *ml = mainloop_new();
 	struct protocol *p = protocol_connect(ml, (struct sockaddr *)&saddr,
-	    flags, cfg.filename, cfg.recv_win, cfg.seed, prob_send,
-	    prob_recv, connect_callback);
+	    flags, cfg.filename, cfg.recv_win, prob_send, prob_recv,
+	    connect_callback);
 
 	mainloop_run(ml);
 	free(ml);
