@@ -51,6 +51,10 @@ int main(int argc, char * const *argv) {
 	else
 		cfgname = "client.in";
 	FILE *cfgfile = fopen(cfgname, "r");
+	if (!cfgfile) {
+		log_warning("Failed to open %s\n", cfgname);
+		return 1;
+	}
 	srandom(time(NULL));
 
 	fgets(cfg.addr, sizeof(cfg.addr), cfgfile);
