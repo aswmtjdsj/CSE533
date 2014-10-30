@@ -166,7 +166,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
 	hdr->seq = random();
-	p->seq = hdr->seq;
+	p->seq = ntohl(hdr->seq);
 	hdr->ack = 0;
 	hdr->window_size = htons(protocol_available_window(p));
 	hdr->flags = htons(HDR_SYN);
