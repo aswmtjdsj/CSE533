@@ -125,7 +125,8 @@ void timer_remove(void *loop, void *handle) {
 	while(tt) {
 		if (tt == handle) {
 			*nextp = tt->next;
-			timer_add(&tt->next->tv, &tt->tv);
+			if (tt->next)
+				timer_add(&tt->next->tv, &tt->tv);
 			free(tt);
 			return;
 		}
