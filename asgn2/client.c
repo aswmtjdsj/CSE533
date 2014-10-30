@@ -76,7 +76,7 @@ int main(int argc, char * const *argv) {
 	struct sockaddr_in saddr;
 	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
-	saddr.sin_port = cfg.port;
+	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;
 	ret = islocal_addr(&saddr);
 	if (ret == 2) {
