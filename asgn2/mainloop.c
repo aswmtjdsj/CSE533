@@ -186,6 +186,7 @@ void mainloop_run(void *data) {
 				FD_SET(tfd->fd, &rfds);
 			if (tfd->rw & 2)
 				FD_SET(tfd->fd, &wfds);
+			tfd = tfd->next;
 		}
 		struct timeval nowtv, ntv = ml->timers->tv;
 		gettimeofday(&nowtv, NULL);
@@ -207,6 +208,7 @@ void mainloop_run(void *data) {
 				rw |= 2;
 			if (rw && tfd->cb)
 				tfd->cb(ml, tfd->data, rw);
+			tfd = tfd->next;
 		}
 	}
 }
