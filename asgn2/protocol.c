@@ -20,7 +20,41 @@ static int protocol_available_window(struct protocol *p) {
 	return 0;
 }
 
+static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
+			uint8_t *buf) {
+	struct tcp_header *hdr = (void *)buf;
+	hdr->ack = htonl(ack);
+	hdr->seq = htonl(seq);
+	hdr->flags = htons(flags);
+	return;
+}
 static void protocol_data_callback(void *ml, void *data, int rw) {
+	/* It's still possible to receive SYN-ACK here.
+	 * And we need to re-transmit ACK if we do */
+	struct protocol *p = data;
+	uint8_t buf[DATAGRAM_SIZE], s[DATAGRAM_SIZE];
+	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
+	if (ret <= 0) {
+		/* Possibly simulated data loss */
+		if (ret < 0)
+			log_warning("recv() failed: %s\n", strerror(errno));
+		return;
+	}
+	struct tcp_header *hdr = (void *)buf;
+	hdr->window_size = ntohs(hdr->window_size);
+	hdr->ack = ntohl(hdr->ack);
+	hdr->seq = ntohl(hdr->seq);
+	hdr->flags = ntohs(hdr->flags);
+
+	if ((hdr->flags & HDR_ACK) && (hdr->flags & HDR_SYN)) {
+		/* We received an SYN-ACK, send ACK immediately */
+		log_info("Duplicated SYN-ACK received, re-transmitting ACK\n");
+		make_header(hdr->ack, hdr->seq+1, HDR_ACK, s);
+		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		return;
+	}
+
+	/* Otherwise we will do cumulative ACK */
 }
 
 static void protocol_synack_handler(void *ml, void *data, int rw) {
@@ -28,7 +62,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	uint8_t buf[DATAGRAM_SIZE];
 	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
 	if (ret <= 0) {
-		//Possibly simulated data loss
+		/* Possibly simulated data loss */
 		if (ret < 0)
 			log_warning("recv() failed: %s\n", strerror(errno));
 		return;
@@ -85,7 +119,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 		p->cb(p, errno);
 	}
 
-	log_debug("Reconnected\n");
+	log_debug("Reconnected, port %u\n", nport);
 
 	//Send ACK
 	uint32_t tmp = hdr->ack;
