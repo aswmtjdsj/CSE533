@@ -88,6 +88,8 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->window_size = htons(protocol_available_window(p));
 	p->send(p->fd, buf, DATAGRAM_SIZE, p->flags);
 	p->state = ESTABLISHED;
+
+	p->cb(p, 0);
 }
 
 static void
