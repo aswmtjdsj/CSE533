@@ -20,6 +20,9 @@ static int protocol_available_window(struct protocol *p) {
 	return 0;
 }
 
+static void protocol_data_callback(void *ml, void *data, int rw) {
+}
+
 static void protocol_synack_handler(void *ml, void *data, int rw) {
 	struct protocol *p = data;
 	uint8_t buf[DATAGRAM_SIZE];
@@ -61,6 +64,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	socklen_t len = sizeof(_saddr);
 	getsockname(p->fd, &_saddr, &len);
 	assert(_saddr.sa_family == AF_INET);
+	fd_remove(p->ml, p->fh);
 	close(p->fd);
 
 	//Reconnect
@@ -91,6 +95,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->window_size = htons(protocol_available_window(p));
 	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
+	p->fh = fd_insert(p->ml, p->fd, FD_READ, protocol_data_callback, p);
 	log_debug("ACK sent\n");
 
 	p->cb(p, 0);
