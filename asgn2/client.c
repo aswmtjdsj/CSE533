@@ -38,11 +38,22 @@ ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 	return recv(fd, buf, len, flags);
 }
+void data_callback(struct protocol *p, int nm) {
+	uint8_t *buf = malloc((DATAGRAM_SIZE-HDR_SIZE)*nm);
+	int ret = protocol_read(p, buf, nm);
+	log_info("[DATA]: %s\n", buf);
+}
 void connect_callback(struct protocol *p, int err) {
+	if (err == 0) {
+		p->dcb = data_callback;
+		return;
+	}
 	if (err == ETIMEDOUT) {
 		log_warning("Connection timedout, quiting...\n");
 		exit(1);
 	}
+	log_warning("Unhandled error: %s\n", strerror(err));
+	exit(1);
 }
 int main(int argc, char * const *argv) {
 	const char *cfgname;

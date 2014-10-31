@@ -17,15 +17,19 @@ static struct protocol *protocol_new(void *ml) {
 }
 
 static int protocol_available_window(struct protocol *p) {
-	return 0;
+	int tmp = p->h-p->e;
+	if (tmp < 0)
+		tmp += p->window_size;
+	return tmp;
 }
 
 static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
-			uint8_t *buf) {
+			uint16_t wsz, uint8_t *buf) {
 	struct tcp_header *hdr = (void *)buf;
 	hdr->ack = htonl(ack);
 	hdr->seq = htonl(seq);
 	hdr->flags = htons(flags);
+	hdr->window_size = wsz;
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {
@@ -33,6 +37,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	 * And we need to re-transmit ACK if we do */
 	struct protocol *p = data;
 	uint8_t buf[DATAGRAM_SIZE], s[DATAGRAM_SIZE];
+	uint16_t owsz = protocol_available_window(p);
 	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
 	if (ret <= 0) {
 		/* Possibly simulated data loss */
@@ -48,13 +53,44 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 
 	if ((hdr->flags & HDR_ACK) && (hdr->flags & HDR_SYN)) {
 		/* We received an SYN-ACK, send ACK immediately */
-		log_info("Duplicated SYN-ACK received, re-transmitting ACK\n");
-		make_header(hdr->ack, hdr->seq+1, HDR_ACK, s);
+		log_info("Duplicated SYN-ACK received, resending ACK\n");
+		make_header(hdr->ack, hdr->seq+1, HDR_ACK, owsz, s);
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		return;
 	}
 
-	/* Otherwise we will do cumulative ACK */
+	if (hdr->seq < p->eseq) {
+		log_info("Duplicated packet received, resending ACK\n");
+		make_header(hdr->ack, p->eseq, HDR_ACK, owsz, s);
+		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		return;
+	}
+	if (hdr->seq >= p->tseq) {
+		while(p->tseq <= hdr->seq) {
+			p->window[p->t].present = 0;
+			p->t = (p->t+1)%p->window_size;
+			p->tseq++;
+		}
+	}
+
+	int tmp = (p->e+hdr->seq-p->eseq)%p->window_size;
+	memcpy(p->window[tmp].buf, hdr+1, DATAGRAM_SIZE-HDR_SIZE);
+	p->window[tmp].present = 1;
+	while(p->window[p->e].present && p->e != p->t) {
+		p->e = (p->e+1)%p->window_size;
+		p->eseq++;
+	}
+	make_header(hdr->ack, p->eseq, HDR_ACK,
+		    protocol_available_window(p), s);
+	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+
+	if (p->e != p->h && p->dcb) {
+		int tmp = p->e-p->h;
+		if (tmp < 0)
+			tmp += p->window_size;
+		p->dcb(p, tmp);
+	}
+	return;
 }
 
 static void protocol_synack_handler(void *ml, void *data, int rw) {
@@ -74,9 +110,9 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->flags = ntohs(hdr->flags);
 
 	//Verify ack number
-	if (hdr->ack != p->seq+1) {
+	if (hdr->ack != p->syn_seq+1) {
 		log_warning("Wrong ack number %d (%d expected), "
-		    "discard packet\n", hdr->ack, p->seq+1);
+		    "discard packet\n", hdr->ack, p->syn_seq+1);
 		return;
 	}
 
@@ -106,7 +142,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	ret = connect(p->fd, (struct sockaddr *)saddr, len);
 	if (ret < 0) {
 		log_warning("Failed to re-connect: %s\n", strerror(errno));
-		p->cb(p, errno);
+		p->ccb(p, errno);
 	}
 
 	log_debug("Reconnected, port %u\n", nport);
@@ -122,7 +158,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	p->fh = fd_insert(p->ml, p->fd, FD_READ, protocol_data_callback, p);
 	log_debug("ACK sent\n");
 
-	p->cb(p, 0);
+	p->ccb(p, 0);
 }
 
 static void
@@ -135,7 +171,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	if (tv->tv_sec >= 12) {
 		log_warning("Maximum number of timedouts reached, "
 		    "giving up...\n");
-		p->cb(p, ETIMEDOUT);
+		p->ccb(p, ETIMEDOUT);
 		protocol_destroy(p);
 		return;
 	}
@@ -189,13 +225,14 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	p->recv = recvf;
 	p->filename = strdup(filename);
 	p->send_flags = send_flags;
-	p->cb = cb;
-	p->window = calloc(p->window_size, sizeof(struct seg));
+	p->ccb = cb;
+	p->dcb = NULL;
+	p->window = calloc(p->window_size+1, sizeof(struct seg));
 
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
 	hdr->seq = random();
-	p->seq = ntohl(hdr->seq);
+	p->syn_seq = ntohl(hdr->seq);
 	hdr->ack = 0;
 	hdr->window_size = htons(protocol_available_window(p));
 	hdr->flags = htons(HDR_SYN);
@@ -220,4 +257,16 @@ void protocol_destroy(struct protocol *p) {
 	close(p->fd);
 	free(p->filename);
 	free(p);
+}
+
+int protocol_read(struct protocol *p, uint8_t *buf, int ndgram) {
+	uint8_t *tmp = buf;
+	int count = 0;
+	while((p->h != p->e) && count < ndgram) {
+		memcpy(tmp, p->window[p->h].buf, DATAGRAM_SIZE-HDR_SIZE);
+		tmp += DATAGRAM_SIZE-HDR_SIZE;
+		p->h = (p->h+1)%p->window_size;
+		count++;
+	}
+	return count;
 }

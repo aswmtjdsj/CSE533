@@ -12,10 +12,11 @@ struct protocol;
 typedef ssize_t (*send_func)(int fd, uint8_t *buf, int len, int flags);
 typedef ssize_t (*recv_func)(int fd, uint8_t *buf, int len, int flags);
 typedef void (*connect_cb)(struct protocol *, int);
+typedef void (*data_cb)(struct protocol *, int);
 
 struct seg {
 	uint8_t buf[DATAGRAM_SIZE];
-	uint32_t seq;
+	int present;
 	void *timeout; /* Timer used for retransmit */
 };
 
@@ -29,15 +30,15 @@ struct protocol {
 	}state;
 	int fd, send_flags;
 	int window_size;
-	//seq is the lowest un-ack'd packet's seq
-	//ack is the lowest expected packet's seq
-	int seq, ack;
+	int syn_seq;
 	void *ml, *fh, *timeout;
 	send_func send;
 	recv_func recv;
-	connect_cb cb;
+	connect_cb ccb;
+	data_cb dcb;
 	/* head and tail of the window */
-	int h, t;
+	int h, t, e;
+	int eseq, tseq;
 	struct seg *window;
 	char *filename;
 };
@@ -65,4 +66,6 @@ struct protocol *
 protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 		 const char *filename, int recv_win, send_func sender,
 		 recv_func recvf, connect_cb cb);
+
+int protocol_read(struct protocol *p, uint8_t *buf, int ndgram);
 #endif
