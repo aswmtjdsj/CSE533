@@ -53,9 +53,14 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 
 	if ((hdr->flags & HDR_ACK) && (hdr->flags & HDR_SYN)) {
 		/* We received an SYN-ACK, send ACK immediately */
-		log_info("Duplicated SYN-ACK received, resending ACK\n");
-		make_header(hdr->ack, hdr->seq+1, HDR_ACK, owsz, s);
-		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		log_info("Duplicated SYN-ACK received, ");
+		if (hdr->ack != p->syn_seq+1)
+			log_info("ACK number invalid, discarding...\n");
+		else {
+			log_info("resending ACK...\n");
+			make_header(hdr->ack, hdr->seq+1, HDR_ACK, owsz, s);
+			p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		}
 		return;
 	}
 
@@ -228,6 +233,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	p->ccb = cb;
 	p->dcb = NULL;
 	p->window = calloc(p->window_size+1, sizeof(struct seg));
+	p->h = p->t = p->e = 0;
 
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
