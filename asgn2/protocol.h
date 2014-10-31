@@ -15,6 +15,7 @@ typedef void (*connect_cb)(struct protocol *, int);
 
 struct seg {
 	uint8_t buf[DATAGRAM_SIZE];
+	uint32_t seq;
 	void *timeout; /* Timer used for retransmit */
 };
 
@@ -35,6 +36,8 @@ struct protocol {
 	send_func send;
 	recv_func recv;
 	connect_cb cb;
+	/* head and tail of the window */
+	int h, t;
 	struct seg *window;
 	char *filename;
 };

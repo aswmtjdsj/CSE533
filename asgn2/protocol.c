@@ -98,24 +98,14 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	socklen_t len = sizeof(_saddr);
 	getsockname(p->fd, &_saddr, &len);
 	assert(_saddr.sa_family == AF_INET);
-	fd_remove(p->ml, p->fh);
-	close(p->fd);
 
 	//Reconnect
 	struct sockaddr_in *saddr = (struct sockaddr_in *)&_saddr;
 	saddr->sin_port = htons(nport);
-	p->fd = socket(AF_INET, SOCK_DGRAM, 0);
+	//p->fd = socket(AF_INET, SOCK_DGRAM, 0);
 	ret = connect(p->fd, (struct sockaddr *)saddr, len);
 	if (ret < 0) {
 		log_warning("Failed to re-connect: %s\n", strerror(errno));
-		p->cb(p, errno);
-	}
-
-	ret = fcntl(p->fd, F_SETFL, O_NONBLOCK);
-	if (ret < 0) {
-		log_warning("Failed to set non blocking socket: %s\n",
-		    strerror(errno));
-		close(p->fd);
 		p->cb(p, errno);
 	}
 
@@ -185,7 +175,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 		return NULL;
 	}
 
-	ret = fcntl(sockfd, F_SETFL, O_NONBLOCK);
+	ret = fcntl(sockfd, F_SETFL, O_NONBLOCK|O_RDWR);
 	if (ret < 0) {
 		log_warning("Failed to set non blocking: %s\n", strerror(errno));
 		close(sockfd);
