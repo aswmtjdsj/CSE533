@@ -192,7 +192,7 @@ int main(int argc, char * const *argv) {
             if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
                 // log_info("[DEBUG] interface to be used: #%d\n", iter);
 
-                // receive the client's first hand-shake
+                // receive the client's first hand-shake, 1st SYN, 1st SYN
                 int recv_size = 0;
                 if((recv_size = recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                     err_quit("recvfrom error: %e\n", errno);
@@ -285,9 +285,9 @@ int main(int argc, char * const *argv) {
                     // connect the client via connection socket
                     // TODO
                     // shouldn't we use connect here?
-                    /*if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
+                    if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
                         err_quit("connect error: %e\n", errno);
-                    }*/
+                    }
 
                     // tell the client the conn socket via listening socket
                     send_hdr.seq = random();

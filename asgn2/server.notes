@@ -50,6 +50,10 @@ adding reliability
         -rtt_timeout, RTO and rtt_minmax
         -use milisecond or microsecond
         -write down modifications in ReadMe
+        (server echo client's timestamp, in case of calculating RTT)
+        (client -----[packet1 client-time-stamp]----> server
+         client <----[packet2 client-time-stamp]----- server
+         client calculates RTT using the initial time stamp, echoed by server)
 
     2. sliding window
         modify header window num
