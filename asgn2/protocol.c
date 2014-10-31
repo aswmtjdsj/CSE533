@@ -101,7 +101,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	}
 	make_header(hdr->ack, p->eseq, HDR_ACK,
 		    protocol_available_window(p), hdr->tsopt, s);
-	//p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 
 	if (p->e != p->h && p->dcb) {
 		int tmp = p->e-p->h;
@@ -162,7 +162,6 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	//Reconnect
 	struct sockaddr_in *saddr = (struct sockaddr_in *)&_saddr;
 	saddr->sin_port = htons(nport);
-	//p->fd = socket(AF_INET, SOCK_DGRAM, 0);
 	ret = connect(p->fd, (struct sockaddr *)saddr, len);
 	if (ret < 0) {
 		log_warning("Failed to re-connect: %s\n", strerror(errno));
@@ -202,7 +201,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 
 	//Build syn packet
 	struct tcp_header *hdr = (struct tcp_header *)pkt;
-	hdr->seq = random();
+	hdr->seq = htonl(p->syn_seq);
 	hdr->ack = 0;
 	hdr->window_size = htons(protocol_available_window(p));
 	hdr->flags = htons(HDR_SYN);
@@ -263,7 +262,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	hdr->flags = htons(HDR_SYN);
 	memcpy(hdr+1, filename, strlen(filename));
 
-	//sendf(sockfd, pkt, len, myflags);
+	sendf(sockfd, pkt, len, myflags);
 	free(pkt);
 
 	//Change state

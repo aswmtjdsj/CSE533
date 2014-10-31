@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "log.h"
 #include "mainloop.h"
@@ -24,6 +25,15 @@ struct fd {
 	int rw;
 	struct fd *next;
 };
+
+#define	TIMEVAL_TO_TIMESPEC(tv, ts) {					\
+	(ts)->tv_sec = (tv)->tv_sec;					\
+	(ts)->tv_nsec = (tv)->tv_usec * 1000;				\
+}
+#define	TIMESPEC_TO_TIMEVAL(tv, ts) {					\
+	(tv)->tv_sec = (ts)->tv_sec;					\
+	(tv)->tv_usec = (ts)->tv_nsec / 1000;				\
+}
 
 void timespec_substract(struct timespec *t1, const struct timespec *t2) {
 	t1->tv_sec -= t2->tv_sec;
@@ -149,8 +159,8 @@ void timer_elapse(struct mainloop *ml, struct timespec *_elapse) {
 	log_debug("Elapse start\n");
 	struct timer *tt = ml->timers;
 	struct timespec start, end;
-	struct timeval elapse = {.tv_sec = _elapse->tv_sec,
-				 .tv_usec = _elapse->tv_nsec/1000};
+	struct timeval elapse;
+	TIMESPEC_TO_TIMEVAL(&elapse, _elapse);
 	int count = 0;
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	while(1) {
@@ -172,8 +182,7 @@ void timer_elapse(struct mainloop *ml, struct timespec *_elapse) {
 				"this could potentially cause starve!!\n", count);
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		timespec_substract(&end, &start);
-		realtv.tv_sec = end.tv_sec;
-		realtv.tv_usec = end.tv_nsec/1000;
+		TIMESPEC_TO_TIMEVAL(&realtv, &end);
 		timer_add(&elapse, &realtv);
 		timer_substract(&elapse, &tt->tv);
 		free(tt);
@@ -209,8 +218,7 @@ void mainloop_run(void *data) {
 			ntop = &nto;
 			clock_gettime(CLOCK_MONOTONIC, &nowh);
 			timespec_substract(&nowh, &end);
-			nowl.tv_sec = nowh.tv_sec;
-			nowl.tv_usec = nowh.tv_nsec/1000;
+			TIMESPEC_TO_TIMEVAL(&nowl, &nowh);
 			timer_substract(&nto, &nowl);
 		}
 
