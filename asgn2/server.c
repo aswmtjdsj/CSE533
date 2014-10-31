@@ -99,6 +99,7 @@ struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack
 void make_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int payload_size, int * send_size) {
     memcpy(dgram, hdr, sizeof(struct tcp_header));
     memcpy(dgram + sizeof(struct tcp_header), payload, payload_size);
+    *send_size = sizeof(struct tcp_header) + payload_size;
 }
 
 /*
@@ -106,7 +107,10 @@ void make_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int pa
  * */
 void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int recv_size) {
     memcpy(hdr, dgram, sizeof(struct tcp_header));
-    memcpy(payload, dgram + sizeof(struct tcp_header), recv_size - sizeof(struct tcp_header));
+
+    if(payload != NULL) {
+        memcpy(payload, dgram + sizeof(struct tcp_header), recv_size - sizeof(struct tcp_header));
+    }
 
     print_hdr(hdr);
 
@@ -148,6 +152,7 @@ int main(int argc, char * const *argv) {
     // recv and send buffer
     uint8_t recv_dgram[DATAGRAM_SIZE], send_dgram[DATAGRAM_SIZE];
     struct tcp_header recv_hdr, send_hdr;
+    int recv_size = 0, sent_size = 0;
 
     // get configuration
     printf("[CONFIG]\n");
@@ -267,9 +272,8 @@ int main(int argc, char * const *argv) {
         for(iter = 0; iter < inter_index; iter++) {
             if(FD_ISSET(sock_data_info[iter].sock_fd, &f_s)) {
                 // log_info("[DEBUG] interface to be used: #%d\n", iter);
-
                 // receive the client's first hand-shake, 1st SYN, 1st SYN
-                int recv_size = 0;
+                recv_size = 0;
                 if((recv_size = recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                     err_quit("recvfrom error: %e\n", errno);
                 }
@@ -277,6 +281,7 @@ int main(int argc, char * const *argv) {
                 char filename[DATAGRAM_SIZE];
 
                 parse_dgram(recv_dgram, &recv_hdr, filename, recv_size);
+                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
                 filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
                 // I should terminate the string by myself
 
@@ -285,8 +290,6 @@ int main(int argc, char * const *argv) {
 
                 printf("\nSuccessfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
                 printf("\tWith port #: %d\n", ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
-                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
-                // print_dgram("Received", &recv_hdr);
                 printf("\tRequested filename: %s\n\n", filename);
 
                 /* fork child to handle this specific request 
@@ -301,7 +304,7 @@ int main(int argc, char * const *argv) {
                     int flags = -1, send_flag = 0, listen_fd = sock_data_info[iter].sock_fd;
 
                     flags = check_address(sock_data_info + iter, cli_addr);
-                    printf("\n[DETECTED]\n");
+                    printf("\n[DETECTED] ");
                     if(flags == FLAG_NON_LOCAL) {
                         printf("Client address doesn\'t belong to local network!\n");
                     } else if(flags == FLAG_LOCAL) {
@@ -359,25 +362,21 @@ int main(int argc, char * const *argv) {
                     }
 
                     // tell the client the conn socket via listening socket
-                    // make_dgram(send_dgram, make_hdr(send_hdr, 
-                    send_hdr.seq = random();
-                    send_hdr.ack = recv_hdr.seq + 1;
-                    send_hdr.flags = HDR_ACK | HDR_SYN;
-                    send_hdr.window_size = 0; /* TODO */ /* ARQ */
                     uint16_t port_to_tell = ((struct sockaddr_in *)chi_addr)->sin_port;
-                    int sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
-
+                    sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
                     printf("Server child is sending the port of newly created connection socket back to the client>\n");
-                    printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
-                    // print_dgram("Sent", &send_hdr);
                     printf("\tport for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
-
-                    send_hdr.seq = htonl(send_hdr.seq); // host to network representation
-                    send_hdr.ack = htonl(send_hdr.ack);
-                    send_hdr.flags = htons(send_hdr.flags);
-                    send_hdr.window_size = htons(send_hdr.window_size); 
-                    memcpy(send_dgram, &send_hdr, sizeof(struct tcp_header));
-                    memcpy(send_dgram+sizeof(struct tcp_header), &port_to_tell, sizeof(uint16_t));
+                    make_dgram(send_dgram, 
+                            make_hdr(&send_hdr,
+                                random(),
+                                recv_hdr.seq + 1,
+                                HDR_ACK | HDR_SYN,
+                                0),
+                            &port_to_tell,
+                            sizeof(uint16_t),
+                            &sent_size);
+                    log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                    /* TODO */ /* ARQ */
 
                     signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                     set_no_rtt_time_out();
@@ -419,19 +418,19 @@ handshake_2nd:
                         if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                             err_quit("recvfrom error: %e\n", errno);
                         }
-                        memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
-                        recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
-                        recv_hdr.seq = ntohl(recv_hdr.seq);
-                        recv_hdr.flags = ntohs(recv_hdr.flags);
-                        recv_hdr.window_size = ntohs(recv_hdr.window_size);
-                        printf("\nIt supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
+
+                        printf("\n[INFO] It supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
+                        parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
+                        log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+
                         // print_dgram("Received", &recv_hdr);
                         if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                            printf("\t3rd handshake succeeded! Listening socket of server child gonna close!\n");
+                            printf("\t[INFO] 3rd handshake succeeded! Listening socket of server child gonna close!\n");
                             close(listen_fd);
                         } else {
-                            printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                            printf("\t[ERROR] Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                         } // if wrong ack, then we should just drop the dgram and re-receive
+                        printf("\n");
                     } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
                     // we don't worry because we have re-trans and time-out mechanism
 
@@ -451,23 +450,21 @@ handshake_2nd:
                     printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
                     while(fgets(file_buf, DATAGRAM_SIZE - sizeof(struct tcp_header) - 1, data_file) != NULL) {
 
-                        // send_hdr.seq = ++seq_num;
-                        send_hdr.seq = recv_hdr.ack;
-                        send_hdr.ack = recv_hdr.seq + 1;
-                        send_hdr.flags = 0; // no flags during file transfer
-                        send_hdr.window_size = 0; /* TODO */ /* ARQ */
-                        int sent_size = sizeof(struct tcp_header) + strlen(file_buf) + 1; // for the '\0'
+                        ++seq_num;
+                        sent_size = sizeof(struct tcp_header) + strlen(file_buf) + 1; // for the '\0'
 
-                        printf("[INFO] going to send part #%d: %s\n", seq_num, file_buf);
+                        printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
+                        make_dgram(send_dgram,
+                                make_hdr(&send_hdr,
+                                    recv_hdr.ack,
+                                    recv_hdr.seq+1,
+                                    0,
+                                    0), /* TODO */
+                                file_buf,
+                                strlen(file_buf) + 1,
+                                &sent_size); /* TODO */ /* ARQ */
                         printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
-                        // print_dgram("Sent", &send_hdr);
-
-                        send_hdr.seq = htonl(send_hdr.seq); // host to network representation
-                        send_hdr.ack = htonl(send_hdr.ack); /* TODO */
-                        send_hdr.flags = htons(send_hdr.flags);
-                        send_hdr.window_size = htons(send_hdr.window_size);  /* TODO */
-                        memcpy(send_dgram, &send_hdr, sizeof(struct tcp_header));
-                        memcpy(send_dgram+sizeof(struct tcp_header), file_buf, strlen(file_buf) + 1);
+                        printf("\n");
 
                         signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                         set_no_rtt_time_out();
@@ -480,12 +477,12 @@ file_trans_again:
                         alarm(no_rtt_time_out);
                         if(sigsetjmp(jmpbuf, 1) != 0) {
                             if(no_rtt_time_out < no_rtt_max_time_out) {
-                                printf("Resend #%d part of file %s after retransmission time-out %d s\n", seq_num, filename, no_rtt_time_out);
+                                printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d s\n", seq_num, filename, no_rtt_time_out);
                                 no_rtt_time_out += 3;
                                 goto file_trans_again;
                             }
                             else {
-                                printf("Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                                printf("[ERROR] Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
                                 exit(1);
                             }
                         }
@@ -494,21 +491,19 @@ file_trans_again:
                             if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                                 err_quit("recvfrom error: %e\n", errno);
                             }
-                            memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
-                            recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
-                            recv_hdr.seq = ntohl(recv_hdr.seq); 
-                            recv_hdr.flags = ntohs(recv_hdr.flags);
-                            recv_hdr.window_size = ntohs(recv_hdr.window_size);
-                            // printf("\n[INFO] This is the ACK #%d from client, supposed to be #%d of file %s\n", recv_hdr.ack,  filename);
-                            // print_dgram("Received", &recv_hdr);
+
+                            printf("\n\t[INFO] Received ACK from client after sending part #%d of file %s!\n", seq_num, filename);
+                            parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
+                            printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
+
                             if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                                printf("\tPart #%d of file %s correctly sent!\n", seq_num, filename);
+                                printf("\n\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
                             } else {
                                 printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                             }
                         } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
-                        alarm(0);
+                        alarm(0); // disable alarm
                     }
                     printf("[INFO] File %s sent complete!\n", filename);
                     printf("[INFO] Connection socket gonna close!\n");
