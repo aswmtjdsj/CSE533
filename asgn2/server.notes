@@ -40,3 +40,20 @@ operation
          both by listening and connection sock, for that didn't know client sock is
          connected to which port) // TODO
     10. transmit data via conn sock
+
+adding reliability
+    1. retransmission
+        RTT and RTO
+        -modify the cycle to make it from send-receive to send-send-send
+        -rtt_stop, change float to int
+        -RTT_RXTMIN, RTT_RXTMAX, RTT_MAXNREXMT
+        -rtt_timeout, RTO and rtt_minmax
+        -use milisecond or microsecond
+        -write down modifications in ReadMe
+
+    2. sliding window
+        modify header window num
+
+    3. 512 datagram, including header
+
+    4. like in client

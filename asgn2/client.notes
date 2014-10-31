@@ -25,3 +25,12 @@ operation
         send ACK to server
     6. use random() by prob p to simulate datagram transmission loss
         when sending ACK or receiving dgram
+
+adding reliability
+    1. like in server
+
+    2. sliding window
+
+    3. like in server
+    
+    4. separate thread
