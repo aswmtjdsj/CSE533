@@ -1,6 +1,8 @@
 #include "utils.h"
 #include "log.h"
 #include "protocol.h"
+#include <signal.h>
+#include <setjmp.h>
 
 int read_serv_conf(struct serv_conf * conf) {
     FILE * conf_file = fopen("server.in", "r");
@@ -42,6 +44,22 @@ void print_dgram(const char * prompt, struct tcp_header * hdr) {
         log_info("\t[DEBUG] %s datagram flagged with: FIN\n", prompt);
     }
     log_info("\t[DEBUG] %s datagram window size: %d\n", prompt, hdr->window_size);
+}
+
+/*
+ * for the retransmission during 3 step handshake
+ * */
+static sigjmp_buf jmpbuf;
+const int no_rtt_max_time_out = 12; // seconds
+const int no_rtt_init_time_out = 3; // seconds
+int no_rtt_time_out;
+
+void sig_alarm(int sig) {
+    siglongjmp(jmpbuf, 1); // non local jump, when alarm triggered
+}
+
+void set_no_rtt_time_out() { // set the initial time-out value
+    no_rtt_time_out = no_rtt_init_time_out;
 }
 
 int main(int argc, char * const *argv) {
@@ -231,6 +249,7 @@ int main(int argc, char * const *argv) {
                     int flags = -1, send_flag = 0, listen_fd = sock_data_info[iter].sock_fd;
 
                     flags = check_address(sock_data_info + iter, cli_addr);
+                    printf("\n[DETECTED]\n");
                     if(flags == FLAG_NON_LOCAL) {
                         printf("Client address doesn\'t belong to local network!\n");
                     } else if(flags == FLAG_LOCAL) {
@@ -243,7 +262,7 @@ int main(int argc, char * const *argv) {
                         err_quit("There must be something wrong with check_address func!\n", 0);
                     }
 
-                    printf("[INFO]\n");
+                    printf("\n[INFO]\n");
                     printf("Server: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
                     printf("Client: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
                     printf("\n");
@@ -309,11 +328,34 @@ int main(int argc, char * const *argv) {
                     memcpy(send_dgram, &send_hdr, sizeof(struct tcp_header));
                     memcpy(send_dgram+sizeof(struct tcp_header), &port_to_tell, sizeof(uint16_t));
 
+                    signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
+                    set_no_rtt_time_out();
+handshake_2nd:
                     if((sent_size = sendto(listen_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
                                     cli_addr, cli_len)) < 0) {
                         err_quit("sendto error: %e\n", errno);
-                    } // TODO
-                    // retransmission needed
+                    }
+
+                    if(no_rtt_time_out != no_rtt_init_time_out) { // this is a retransmission scenario
+                        // should send the dgram via both listening and connection sock
+                        if((sent_size = sendto(conn_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
+                                        cli_addr, cli_len)) < 0) {
+                            err_quit("sendto error: %e\n", errno);
+                        }
+                    }
+
+                    alarm(no_rtt_time_out);
+                    if(sigsetjmp(jmpbuf, 1) != 0) {
+                        if(no_rtt_time_out < no_rtt_max_time_out) {
+                            printf("Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
+                            no_rtt_time_out += 3;
+                            goto handshake_2nd;
+                        }
+                        else {
+                            printf("Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                            exit(1);
+                        }
+                    }
 
                     /*
                      * Note that this implies that, in the event of the server timing out, 
@@ -330,17 +372,21 @@ int main(int argc, char * const *argv) {
                     recv_hdr.seq = ntohl(recv_hdr.seq);
                     recv_hdr.flags = ntohs(recv_hdr.flags);
                     recv_hdr.window_size = ntohs(recv_hdr.window_size);
-                    printf("It supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
+                    printf("\nIt supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
                     print_dgram("Received", &recv_hdr);
                     if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                        printf("3rd handshake succeeded! Listening socket of server child gonna close!\n");
+                        printf("\t3rd handshake succeeded! Listening socket of server child gonna close!\n");
                         close(listen_fd);
                     } else {
-                        printf("Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
-                    }
+                        printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                    } // if wrong ack, then what should we do?
+                    // TODO
+                    alarm(0); // no need to re-trans, disable alarm
 
                     // data transfer
                     // TODO
+                    
+                    // data transfer finished, gogogo
                     exit(0);
                 } else {
                     break; // parent
