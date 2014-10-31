@@ -1,0 +1,27 @@
+config
+    serv ip
+    serv port
+    filename
+    max recv sli window sz
+    seed
+    data loss p
+    read dgram rate
+
+operation
+    1. read config
+    2. check the server local or not
+        use get ifi info to acquire its own info and print out
+        loopback then both 127.0.0.1
+        otherwise then do it using LPM
+        make your choice and print
+        MSG_DON
+    3. create udp socket, bind on port 0, wildcard
+        get sock name to retrieve info
+        connect to server ip and port
+        getpeername and print
+    4. send a dgram (with filename) to server, should be BACKED-UP by a timeout in case of datagram loss and retransmission // this is 1st ACK
+    5. the client receive the dgram with server conn sock port #
+        reconnect server with the conn sock
+        send ACK to server
+    6. use random() by prob p to simulate datagram transmission loss
+        when sending ACK or receiving dgram

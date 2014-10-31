@@ -1,0 +1,42 @@
+config
+    port
+    max send sli window sz
+
+operation
+    1. read config
+    2. get ifi info
+        for every ip
+        create a socket and bind
+        (we don't bind broadcast, // did we do?
+        only unicast and loopback
+
+        build an array for each socket with
+            sockfd
+            ip addr bound
+            net mask
+            subnet
+        (report in a readme // TODO
+        (!!!! ensure only unicast bound // TODO
+        print essential messages
+    3. use select to wait for incoming
+    4. use recvfrom to get the datagram and get the client addr (ip and port)
+    5. fork a child and parent go back to loop to use select for listening
+    6. check client local or not, print out results
+    7. child process create a new socket to handle file transfer, connection socket
+        bind to server ip and wildcard port
+        get sock name to get ip and port num, print out
+        connect conn sock to client ip and port
+    8. server child process send a datagram using listening socket(inherited from parent)
+        to ack client with the conn sock port (should be backed up by ARQ 
+            and retransmitted in the event of loss) // 2nd, ACK + SYN
+        (if this dgram lost, client may retransmit the dgram which carries the filename
+         !!! we must ensure the retransmitted request for a new client
+         // TODO
+         'race' condition?)
+    9. server conn sock should receive an ACK from client // 3rd ACK
+        close the listening socket
+        (if server times out, meaning didn't receive the 3rd ACK
+         !!! server child should retransmit the dgram with conn sock port # twice
+         both by listening and connection sock, for that didn't know client sock is
+         connected to which port) // TODO
+    10. transmit data via conn sock
