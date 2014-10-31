@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "log.h"
 #include "mainloop.h"
@@ -24,6 +25,14 @@ struct fd {
 	struct fd *next;
 };
 
+void timespec_substract(struct timespec *t1, const struct timespec *t2) {
+	t1->tv_sec -= t2->tv_sec;
+	t1->tv_nsec -= t2->tv_nsec;
+	if (t1->tv_nsec < 0) {
+		t1->tv_sec--;
+		t1->tv_nsec+=1000000000;
+	}
+}
 void timer_substract(struct timeval *tv1, const struct timeval *tv2) {
 	tv1->tv_sec -= tv2->tv_sec;
 	tv1->tv_usec -= tv2->tv_usec;
@@ -136,21 +145,23 @@ void timer_remove(void *loop, void *handle) {
 }
 
 static
-void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
+void timer_elapse(struct mainloop *ml, struct timespec *_elapse) {
 	log_debug("Elapse start\n");
 	struct timer *tt = ml->timers;
-	struct timeval start, end;
+	struct timespec start, end;
+	struct timeval elapse = {.tv_sec = _elapse->tv_sec,
+				 .tv_usec = _elapse->tv_nsec/1000};
 	int count = 0;
-	gettimeofday(&start, NULL);
+	clock_gettime(CLOCK_MONOTONIC, &start);
 	while(1) {
 		struct timeval realtv;
-		if (timer_cmp(&tt->tv, elapse) > 0) {
-			timer_substract(&tt->tv, elapse);
+		if (timer_cmp(&tt->tv, &elapse) > 0) {
+			timer_substract(&tt->tv, &elapse);
 			break;
 		}
 		ml->timers = tt->next;
 		if (tt->cb) {
-			realtv = *elapse;
+			realtv = elapse;
 			timer_substract(&realtv, &tt->tv);
 			timer_add(&realtv, &tt->realtv);
 			tt->cb(ml, tt->data, &realtv);
@@ -159,10 +170,12 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 		if (!(count & 255))
 			log_warning("More than %d timer event fired at once,"
 				"this could potentially cause starve!!\n", count);
-		gettimeofday(&end, NULL);
-		timer_substract(&end, &start);
-		timer_add(elapse, &end);
-		timer_substract(elapse, &tt->tv);
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		timespec_substract(&end, &start);
+		realtv.tv_sec = end.tv_sec;
+		realtv.tv_usec = end.tv_nsec/1000;
+		timer_add(&elapse, &realtv);
+		timer_substract(&elapse, &tt->tv);
 		free(tt);
 		tt = ml->timers;
 		if (!tt)
@@ -173,10 +186,10 @@ void timer_elapse(struct mainloop *ml, struct timeval *elapse) {
 
 void mainloop_run(void *data) {
 	struct mainloop *ml = data;
-	struct timeval lasttv;
+	struct timespec end;
 	fd_set rfds, wfds;
 
-	gettimeofday(&lasttv, NULL);
+	clock_gettime(CLOCK_MONOTONIC, &end);
 	while(ml->fds || ml->timers) {
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
@@ -189,25 +202,27 @@ void mainloop_run(void *data) {
 			tfd = tfd->next;
 		}
 
-		struct timeval nowtv, ntv;
-		struct timeval *ntvp = NULL;
+		struct timespec nowh;
+		struct timeval nowl, nto, *ntop = NULL;
 		if (ml->timers) {
-			ntv = ml->timers->tv;
-			ntvp = &ntv;
-			gettimeofday(&nowtv, NULL);
-			timer_substract(&nowtv, &lasttv);
-			timer_substract(&ntv, &nowtv);
+			nto = ml->timers->tv;
+			ntop = &nto;
+			clock_gettime(CLOCK_MONOTONIC, &nowh);
+			timespec_substract(&nowh, &end);
+			nowl.tv_sec = nowh.tv_sec;
+			nowl.tv_usec = nowh.tv_nsec/1000;
+			timer_substract(&nto, &nowl);
 		}
 
-		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, ntvp);
+		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, ntop);
 
 		if (ml->timers) {
-			gettimeofday(&nowtv, NULL);
-			timer_substract(&nowtv, &lasttv);
-			timer_elapse(ml, &nowtv);
+			clock_gettime(CLOCK_MONOTONIC, &nowh);
+			timespec_substract(&nowh, &end);
+			timer_elapse(ml, &nowh);
 		}
 
-		gettimeofday(&lasttv, NULL);
+		clock_gettime(CLOCK_MONOTONIC, &end);
 		if (ret <= 0)
 			continue;
 		tfd = ml->fds;

@@ -24,12 +24,16 @@ static int protocol_available_window(struct protocol *p) {
 }
 
 static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
-			uint16_t wsz, uint8_t *buf) {
+			uint16_t wsz, uint32_t ts, uint8_t *buf) {
 	struct tcp_header *hdr = (void *)buf;
 	hdr->ack = htonl(ack);
 	hdr->seq = htonl(seq);
 	hdr->flags = htons(flags);
 	hdr->window_size = htons(wsz);
+	hdr->tsecr = htonl(ts);
+
+	//Set our own timestamp
+	
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {
@@ -45,11 +49,17 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 			log_warning("recv() failed: %s\n", strerror(errno));
 		return;
 	}
+
+	if (ret < DATAGRAM_SIZE)
+		log_info("Short packet: %d bytes\n", ret);
+
+	size_t recv_size = ret;
 	struct tcp_header *hdr = (void *)buf;
 	hdr->window_size = ntohs(hdr->window_size);
 	hdr->ack = ntohl(hdr->ack);
 	hdr->seq = ntohl(hdr->seq);
 	hdr->flags = ntohs(hdr->flags);
+	hdr->tsopt = ntohl(hdr->tsopt);
 
 	if ((hdr->flags & HDR_ACK) && (hdr->flags & HDR_SYN)) {
 		/* We received an SYN-ACK, send ACK immediately */
@@ -58,7 +68,8 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 			log_info("ACK number invalid, discarding...\n");
 		else {
 			log_info("resending ACK...\n");
-			make_header(hdr->ack, hdr->seq+1, HDR_ACK, owsz, s);
+			make_header(hdr->ack, hdr->seq+1, HDR_ACK, owsz,
+				    hdr->tsopt, s);
 			p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		}
 		return;
@@ -66,12 +77,12 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 
 	if (hdr->seq < p->eseq) {
 		log_info("Duplicated packet received, resending ACK\n");
-		make_header(hdr->ack, p->eseq, HDR_ACK, owsz, s);
+		make_header(hdr->ack, p->eseq, HDR_ACK, owsz, hdr->tsopt, s);
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		return;
 	}
-	log_info("Valid data packet received, seq %u, ack %u\n",
-		 hdr->seq, hdr->ack);
+	log_info("Valid data packet received, seq %u, ack %u, size %u\n",
+		 hdr->seq, hdr->ack, recv_size);
 	if (hdr->seq >= p->tseq) {
 		while(p->tseq <= hdr->seq) {
 			p->window[p->t].present = 0;
@@ -81,15 +92,16 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	}
 
 	int tmp = (p->e+hdr->seq-p->eseq)%p->window_size;
-	memcpy(p->window[tmp].buf, hdr+1, DATAGRAM_SIZE-HDR_SIZE);
+	p->window[tmp].len = recv_size-HDR_SIZE;
+	memcpy(p->window[tmp].buf, hdr+1, recv_size-HDR_SIZE);
 	p->window[tmp].present = 1;
 	while(p->window[p->e].present && p->e != p->t) {
 		p->e = (p->e+1)%p->window_size;
 		p->eseq++;
 	}
 	make_header(hdr->ack, p->eseq, HDR_ACK,
-		    protocol_available_window(p), s);
-	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		    protocol_available_window(p), hdr->tsopt, s);
+	//p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 
 	if (p->e != p->h && p->dcb) {
 		int tmp = p->e-p->h;
@@ -251,7 +263,7 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	hdr->flags = htons(HDR_SYN);
 	memcpy(hdr+1, filename, strlen(filename));
 
-	sendf(sockfd, pkt, len, myflags);
+	//sendf(sockfd, pkt, len, myflags);
 	free(pkt);
 
 	//Change state

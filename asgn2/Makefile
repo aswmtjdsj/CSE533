@@ -1,5 +1,5 @@
 CC = gcc
-LIBS =
+LIBS = -lrt
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o protocol.o utils.o
 server_OBJS = server.o utils.o

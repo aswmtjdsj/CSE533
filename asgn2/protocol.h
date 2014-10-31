@@ -17,6 +17,7 @@ typedef void (*data_cb)(struct protocol *, int);
 struct seg {
 	uint8_t buf[DATAGRAM_SIZE];
 	int present;
+	size_t len;
 	void *timeout; /* Timer used for retransmit */
 };
 
@@ -46,6 +47,7 @@ struct protocol {
 struct tcp_header {
 	uint32_t seq;
 	uint32_t ack;
+	uint32_t tsopt, tsecr;
 	uint16_t flags;
 	uint16_t window_size;
 };
@@ -58,7 +60,7 @@ struct tcp_header {
 #define HDR_SIZE (sizeof(struct tcp_header))
 
 /* Who knows how the compiler gonna align this shit */
-CASSERT(HDR_SIZE != 12, tcp_header_size);
+CASSERT(HDR_SIZE != 20, tcp_header_size);
 
 void protocol_destroy(struct protocol *);
 
