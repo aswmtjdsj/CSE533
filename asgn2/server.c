@@ -300,7 +300,7 @@ int main(int argc, char * const *argv) {
                     printf("Server child is sending the port of newly created connection socket back to the client>\n");
                     printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                     print_dgram("Sent", &send_hdr);
-                    printf("\tport for conn socket #: %d\n", ntohs(port_to_tell));
+                    printf("\tport for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
 
                     send_hdr.seq = htonl(send_hdr.seq); // host to network representation
                     send_hdr.ack = htonl(send_hdr.ack);
