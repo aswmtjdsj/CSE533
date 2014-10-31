@@ -29,7 +29,7 @@ static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
 	hdr->ack = htonl(ack);
 	hdr->seq = htonl(seq);
 	hdr->flags = htons(flags);
-	hdr->window_size = wsz;
+	hdr->window_size = htons(wsz);
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {
@@ -70,6 +70,8 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		return;
 	}
+	log_info("Valid data packet received, seq %u, ack %u\n",
+		 hdr->seq, hdr->ack);
 	if (hdr->seq >= p->tseq) {
 		while(p->tseq <= hdr->seq) {
 			p->window[p->t].present = 0;
@@ -132,6 +134,11 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	//Packet is valid, stop the timer
 	timer_remove(p->ml, p->timeout);
 	p->timeout = NULL;
+
+	//Record the seq number
+	p->tseq = p->eseq = hdr->seq+1;
+
+	//New port number
 	uint16_t *nport_p = (void *)(hdr+1);
 	uint16_t nport = ntohs(*nport_p);
 
