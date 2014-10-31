@@ -105,13 +105,15 @@ void make_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int pa
  * parse datagram
  * */
 void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int recv_size) {
-    /*memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
-    memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
+    memcpy(hdr, dgram, sizeof(struct tcp_header));
+    memcpy(payload, dgram + sizeof(struct tcp_header), recv_size - sizeof(struct tcp_header));
 
-    recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
-    recv_hdr.seq = ntohl(recv_hdr.seq);
-    recv_hdr.flags = ntohs(recv_hdr.flags);
-    recv_hdr.window_size = ntohs(recv_hdr.window_size);*/
+    print_hdr(hdr);
+
+    hdr->ack = ntohl(hdr->ack); // network presentation to host
+    hdr->seq = ntohl(hdr->seq);
+    hdr->flags = ntohs(hdr->flags);
+    hdr->window_size = ntohs(hdr->window_size);
 }
 
 int main(int argc, char * const *argv) {
@@ -274,13 +276,7 @@ int main(int argc, char * const *argv) {
 
                 char filename[DATAGRAM_SIZE];
 
-                memcpy(&recv_hdr, recv_dgram, sizeof(struct tcp_header));
-                memcpy(filename, recv_dgram + sizeof(struct tcp_header), DATAGRAM_SIZE - sizeof(struct tcp_header));
-
-                recv_hdr.ack = ntohl(recv_hdr.ack); // network presentation to host
-                recv_hdr.seq = ntohl(recv_hdr.seq);
-                recv_hdr.flags = ntohs(recv_hdr.flags);
-                recv_hdr.window_size = ntohs(recv_hdr.window_size);
+                parse_dgram(recv_dgram, &recv_hdr, filename, recv_size);
                 filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
                 // I should terminate the string by myself
 
@@ -315,12 +311,12 @@ int main(int argc, char * const *argv) {
                         printf("Client address is a loop-back address! (Server and Client are in the same machine)\n");
                         send_flag = MSG_DONTROUTE;
                     } else {
-                        err_quit("There must be something wrong with check_address func!\n", 0);
+                        printf("There must be something wrong with check_address func!\n");
+                        exit(1);
                     }
 
-                    printf("\n[INFO]\n");
-                    printf("Server: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
-                    printf("Client: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
+                    printf("[INFO] Server: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
+                    printf("[INFO] Client: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
                     printf("\n");
 
                     // Now child has its derived listening socket still open
@@ -349,7 +345,7 @@ int main(int argc, char * const *argv) {
                         err_quit("getsockname error: %e\n", errno);
                     }
 
-                    printf("After binding the connection socket to the Server ip address by the child>\n");
+                    printf("[INFO] After binding the connection socket to the Server ip address by the child>\n");
                     printf("\tServer IP: %s\n", sa_ntop(chi_addr, &tmp_str, &addr_len));
                     printf("\tServer port: %d\n", ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
                     printf("\n");
@@ -363,6 +359,7 @@ int main(int argc, char * const *argv) {
                     }
 
                     // tell the client the conn socket via listening socket
+                    // make_dgram(send_dgram, make_hdr(send_hdr, 
                     send_hdr.seq = random();
                     send_hdr.ack = recv_hdr.seq + 1;
                     send_hdr.flags = HDR_ACK | HDR_SYN;
@@ -454,7 +451,8 @@ handshake_2nd:
                     printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
                     while(fgets(file_buf, DATAGRAM_SIZE - sizeof(struct tcp_header) - 1, data_file) != NULL) {
 
-                        send_hdr.seq = ++seq_num;
+                        // send_hdr.seq = ++seq_num;
+                        send_hdr.seq = recv_hdr.ack;
                         send_hdr.ack = recv_hdr.seq + 1;
                         send_hdr.flags = 0; // no flags during file transfer
                         send_hdr.window_size = 0; /* TODO */ /* ARQ */
@@ -501,9 +499,10 @@ file_trans_again:
                             recv_hdr.seq = ntohl(recv_hdr.seq); 
                             recv_hdr.flags = ntohs(recv_hdr.flags);
                             recv_hdr.window_size = ntohs(recv_hdr.window_size);
-                            printf("\n[INFO] This is the ACK from client for the sent part #%d, supposed to be seq #%d of file %s\n", recv_hdr.ack-1, seq_num, filename);
+                            // printf("\n[INFO] This is the ACK #%d from client, supposed to be #%d of file %s\n", recv_hdr.ack,  filename);
                             // print_dgram("Received", &recv_hdr);
                             if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
+                                printf("\tPart #%d of file %s correctly sent!\n", seq_num, filename);
                             } else {
                                 printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                             }
