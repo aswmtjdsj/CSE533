@@ -155,7 +155,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	hdr->window_size = htons(protocol_available_window(p));
 	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
-	p->fh = fd_insert(p->ml, p->fd, FD_READ, protocol_data_callback, p);
+	fd_set_cb(p->fh, protocol_data_callback);
 	log_debug("ACK sent\n");
 
 	p->ccb(p, 0);
