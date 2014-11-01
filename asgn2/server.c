@@ -1,15 +1,22 @@
 #include "utils.h"
 #include "log.h"
 #include "protocol.h"
+#include <string.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <setjmp.h>
 
+// my own error handle func, with errno-string translation
+void my_err_quit(const char * prompt) {
+    printf("%s: %s\n", prompt, strerror(errno));
+    exit(EXIT_FAILURE);
+}
+
 int read_serv_conf(struct serv_conf * conf) {
     FILE * conf_file = fopen("server.in", "r");
     if(conf_file == NULL) {
-        err_quit("No such file \"server.in\"!\n", errno);
+        my_err_quit("No such file \"server.in\"!\n");
     }
     fscanf(conf_file, " %d", &(conf->port_num));
     fscanf(conf_file, " %d", &(conf->sli_win_sz));
@@ -189,13 +196,9 @@ int main(int argc, char * const *argv) {
     for( ifihead = ifi = get_ifi_info(AF_INET, 1); ifi != NULL; ifi = ifi->ifi_next) {
         // Interface
         printf("%s: ", ifi->ifi_name);
-
         if (ifi->ifi_index != 0) printf("(%d) ", ifi->ifi_index);
-
         print_ifi_flags(ifi);
-
         if (ifi->ifi_mtu != 0) printf("  MTU: %d\n", ifi->ifi_mtu);
-
         if ((ip_addr = ifi->ifi_addr) != NULL) printf("  IP address: %s\n", sa_ntop(ip_addr, &tmp_str, &addr_len)); 
 
         /* for interface array */
@@ -205,11 +208,11 @@ int main(int argc, char * const *argv) {
 
         // set socket and option
         if((sock_data_info[inter_index].sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-            err_quit("socket error: %e\n", errno);
+            my_err_quit("socket error");
         }
 
         if(setsockopt(sock_data_info[inter_index].sock_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag)) < 0) {
-            err_quit("set socket option error: %e\n", errno);
+            my_err_quit("set socket option error");
         }
 
         // set server port
@@ -219,7 +222,7 @@ int main(int argc, char * const *argv) {
         
         // bind sock to addr
         if(bind(sock_data_info[inter_index].sock_fd, (struct sockaddr *) sock_data_info[inter_index].ip_addr, sizeof(struct sockaddr)) < 0) {
-            err_quit("bind error: %e\n", errno);
+            my_err_quit("bind error");
         }
 
         // get interface netmask
@@ -270,13 +273,21 @@ int main(int argc, char * const *argv) {
     // fork a child to handle incoming conn
     pid_t child_pid;
 
-    if(signal(SIGCHLD, sig_child) == SIG_ERR) {
-        err_quit("[parent] signal handler error: %e", errno);
+    struct sigaction act;
+    act.sa_handler = sig_child;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+#ifdef SA_RESTART
+    act.sa_flags |= SA_RESTART;
+#endif
+    if(sigaction(SIGCHLD, &act, NULL) < 0) {
+        my_err_quit("[parent] signal handler error");
     }
 
-    // for TODO
-    //
-    // int first_seq = -1;
+    /*if(signal(SIGCHLD, sig_child) == SIG_ERR) {
+        my_err_quit("[parent] signal handler error");
+    }*/
+
     for( ; ; ) {
         printf("\n[INFO] Expecting upcoming datagram...\n");
         if(child_info_list != NULL) {
@@ -300,7 +311,7 @@ int main(int argc, char * const *argv) {
                 printf("[INFO] Signal Caught! Interrupt Waiting LOOP!\n");
                 continue;
             } else {
-                err_quit("select error: %e\n", errno);
+                my_err_quit("select error");
             }
         }
         // log_info("[DEBUG] select done\n");
@@ -312,7 +323,7 @@ int main(int argc, char * const *argv) {
                 recv_size = 0;
 
                 if((recv_size = recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
-                    err_quit("recvfrom error: %e\n", errno);
+                    my_err_quit("recvfrom error");
                 }
 
                 char filename[DATAGRAM_SIZE];
@@ -377,13 +388,13 @@ int main(int argc, char * const *argv) {
                     // Now child has its derived listening socket still open
                     // Time to create connection socket and bind it
                     if((conn_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-                        err_quit("socket error: %e\n", errno);
+                        my_err_quit("socket error");
                     }
 
                     // set sock option for connection sock
                     on_flag = 1;
                     if(setsockopt(conn_fd, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag)) < 0) {
-                        err_quit("set socket option error: %e\n", errno);
+                        my_err_quit("set socket option error");
                     }
 
                     // set port for conn
@@ -392,12 +403,12 @@ int main(int argc, char * const *argv) {
 
                     // bind conn sock
                     if(bind(conn_fd, chi_addr, sizeof(struct sockaddr)) < 0) {
-                        err_quit("bind error: %e\n", errno);
+                        my_err_quit("bind error");
                     }
 
                     // use getsockname to get the bound ip and the ephemeral port for later use
                     if(getsockname(conn_fd, chi_addr, (socklen_t *) &chi_len) < 0) {
-                        err_quit("getsockname error: %e\n", errno);
+                        my_err_quit("getsockname error");
                     }
 
                     printf("[INFO] After binding the connection socket to the Server ip address by the child>\n");
@@ -410,7 +421,7 @@ int main(int argc, char * const *argv) {
 
                     // connect the client via connection socket
                     if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
-                        err_quit("connect error: %e\n", errno);
+                        my_err_quit("connect error");
                     }
 
                     // tell the client the conn socket via listening socket
@@ -437,14 +448,14 @@ int main(int argc, char * const *argv) {
 handshake_2nd:
                     if((sent_size = sendto(listen_fd, send_dgram, sent_size, send_flag, 
                                     cli_addr, cli_len)) < 0) {
-                        err_quit("sendto error: %e\n", errno);
+                        my_err_quit("sendto error");
                     }
 
                     if(no_rtt_time_out != no_rtt_init_time_out) { // this is a retransmission scenario
                         // should send the dgram via both listening and connection sock
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                         cli_addr, cli_len)) < 0) {
-                            err_quit("sendto error: %e\n", errno);
+                            my_err_quit("sendto error");
                         }
                     }
 
@@ -470,7 +481,7 @@ handshake_2nd:
                     // 3rd handshake, connection socket receive ACK from client
                     do {
                         if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
-                            err_quit("recvfrom error: %e\n", errno);
+                            my_err_quit("recvfrom error");
                         }
 
                         printf("\n[INFO] It supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
@@ -526,7 +537,7 @@ handshake_2nd:
 file_trans_again:
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                         cli_addr, cli_len)) < 0) {
-                            err_quit("sendto error: %e\n", errno);
+                            my_err_quit("sendto error");
                         }
 
                         alarm(no_rtt_time_out);
@@ -544,7 +555,7 @@ file_trans_again:
 
                         do {
                             if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
-                                err_quit("recvfrom error: %e\n", errno);
+                                my_err_quit("recvfrom error");
                             }
 
                             printf("\n\t[INFO] Received ACK from client after sending part #%d of file %s!\n", seq_num, filename);
