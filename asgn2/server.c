@@ -455,11 +455,13 @@ handshake_2nd:
 
                     char file_buf[DATAGRAM_SIZE];
                     int seq_num = 0;
+                    int read_size = 0;
                     printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
-                    while(fgets(file_buf, DATAGRAM_SIZE - sizeof(struct tcp_header), data_file) != NULL) {
+                    while((read_size = fread(file_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file)) != 0) {
 
+                        file_buf[read_size] = 0;
                         ++seq_num;
-                        sent_size = sizeof(struct tcp_header) + strlen(file_buf);
+                        sent_size = sizeof(struct tcp_header) + read_size;
 
                         printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
                         make_dgram(send_dgram,
@@ -469,12 +471,12 @@ handshake_2nd:
                                     0,
                                     0), /* TODO */
                                 file_buf,
-                                strlen(file_buf) + 1,
+                                read_size,
                                 &sent_size); /* TODO */ /* ARQ */
                         printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                         printf("\n");
 
-                        signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
+                        signal(SIGALRM, sig_alarm); // for retransmission of data parts
                         set_no_rtt_time_out();
 file_trans_again:
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
@@ -513,6 +515,7 @@ file_trans_again:
 
                         alarm(0); // disable alarm
                     }
+
                     printf("[INFO] File %s sent complete!\n", filename);
                     printf("[INFO] Connection socket gonna close!\n");
                     close(conn_fd);
