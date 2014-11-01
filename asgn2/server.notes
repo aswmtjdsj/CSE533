@@ -61,3 +61,5 @@ adding reliability
     3. 512 datagram, including header
 
     4. like in client
+
+    todo: datagram size, and last dgram

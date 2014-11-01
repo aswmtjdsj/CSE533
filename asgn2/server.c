@@ -250,6 +250,9 @@ int main(int argc, char * const *argv) {
         err_quit("[parent] signal handler error: %e", errno);
     }
 
+    // for TODO
+    //
+    int first_seq = -1;
     for( ; ; ) {
         printf("Expecting upcoming datagram...\n");
         max_fd_count = 0;
@@ -274,6 +277,7 @@ int main(int argc, char * const *argv) {
                 // log_info("[DEBUG] interface to be used: #%d\n", iter);
                 // receive the client's first hand-shake, 1st SYN, 1st SYN
                 recv_size = 0;
+
                 if((recv_size = recvfrom(sock_data_info[iter].sock_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
                     err_quit("recvfrom error: %e\n", errno);
                 }
@@ -448,10 +452,10 @@ handshake_2nd:
                     char file_buf[DATAGRAM_SIZE];
                     int seq_num = 0;
                     printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
-                    while(fgets(file_buf, DATAGRAM_SIZE - sizeof(struct tcp_header) - 1, data_file) != NULL) {
+                    while(fgets(file_buf, DATAGRAM_SIZE - sizeof(struct tcp_header), data_file) != NULL) {
 
                         ++seq_num;
-                        sent_size = sizeof(struct tcp_header) + strlen(file_buf) + 1; // for the '\0'
+                        sent_size = sizeof(struct tcp_header) + strlen(file_buf);
 
                         printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
                         make_dgram(send_dgram,
