@@ -81,6 +81,13 @@ struct serv_conf {
     int sli_win_sz;
 };
 
+// active child info
+struct child_info {
+    pid_t pid;
+    uint32_t syn_init;
+    struct child_info * next;
+};
+
 #define MAX_INTERFACE_NUM 10
 
 #endif

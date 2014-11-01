@@ -72,10 +72,28 @@ void set_no_rtt_time_out() {
 /* 
  * handle zombie child proc
  * */
+struct child_info * child_info_list, * cur_pt;
 void sig_child(int signo) {
     pid_t pid;
     int stat;
     pid = wait(&stat);
+    // remove exited child from active list
+    struct child_info * temp_pt = child_info_list, * prev_pt = temp_pt;
+    for(; temp_pt != NULL; ) {
+        if(temp_pt->pid == pid) {
+            if(prev_pt == temp_pt) { // in the front of the list
+                child_info_list = temp_pt->next;
+            } else {
+                prev_pt->next = temp_pt->next;
+            }
+            free(temp_pt);
+            break;
+        }
+        if(prev_pt != temp_pt) {
+            prev_pt = temp_pt;
+        }
+        temp_pt = temp_pt->next;
+    }
     printf("[parent] child process %d terminated\n", pid);
 }
 
@@ -158,6 +176,9 @@ int main(int argc, char * const *argv) {
     struct tcp_header recv_hdr, send_hdr;
     int recv_size = 0, sent_size = 0;
 
+    // active child info linked list, maintained by parent
+    cur_pt = child_info_list = NULL;
+
     // get configuration
     printf("[CONFIG]\n");
     read_serv_conf(&config_serv);
@@ -239,7 +260,6 @@ int main(int argc, char * const *argv) {
         printf("\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port));
         printf("\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
         printf("\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
-        printf("\n");
     }
 
     // use select for incoming connection
@@ -258,7 +278,15 @@ int main(int argc, char * const *argv) {
     //
     // int first_seq = -1;
     for( ; ; ) {
-        printf("Expecting upcoming datagram...\n");
+        printf("\n[INFO] Expecting upcoming datagram...\n");
+        if(child_info_list != NULL) {
+            printf("[INFO] Current active children:\n");
+            struct child_info * temp_pt = child_info_list;
+            for( ; temp_pt != NULL;) {
+                printf("\t child #%d with initial SYN #%u\n", temp_pt->pid, temp_pt->syn_init);
+                temp_pt = temp_pt->next;
+            }
+        }
         max_fd_count = 0;
         for(iter = 0; iter < inter_index; iter++) {
             FD_SET(sock_data_info[iter].sock_fd, &f_s);
@@ -269,6 +297,7 @@ int main(int argc, char * const *argv) {
         if(select(max_fd_count, &f_s, NULL, NULL, NULL) < 0) {
             if(errno == EINTR) {
                 /* how to handle */
+                printf("[INFO] Signal Caught! Interrupt Waiting LOOP!\n");
                 continue;
             } else {
                 err_quit("select error: %e\n", errno);
@@ -293,8 +322,24 @@ int main(int argc, char * const *argv) {
                 filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
                 // I should terminate the string by myself
 
-                // TODO
                 /* should deal with seq and flags during ensuring stability */
+                /* check active child list to see if the new SYN is a dup one or not */
+                struct child_info * temp_pt = child_info_list;
+                uint8_t found = 0;
+                for( ; temp_pt != NULL; ) {
+                    if(temp_pt->syn_init == recv_hdr.seq) {
+                        printf("\n[INFO] Duplicate SYN #%u detected\n", temp_pt->syn_init);
+                        printf("\n[INFO] Send alarm of retransmission to corresponding child #%d\n", temp_pt->pid);
+                        found = 1;
+                        kill(temp_pt->pid, SIGALRM);
+                        break;
+                    }
+                    temp_pt = temp_pt->next;
+                }
+                if(found) {
+                    // no need to continue this procedure, as its only a dup SYN
+                    break;
+                }
 
                 printf("\nSuccessfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
                 printf("\tWith port #: %d\n", ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
@@ -305,8 +350,7 @@ int main(int argc, char * const *argv) {
                  * */
 
                 if((child_pid = fork()) == 0) { // child
-                    printf("Server child forked!\n");
-
+                    //printf("\033[33m[INFO] Server child forked!\033[0m\n");
                     memcpy(chi_addr, sock_data_info[iter].ip_addr, sizeof(struct sockaddr));
 
                     int flags = -1, send_flag = 0, listen_fd = sock_data_info[iter].sock_fd;
@@ -372,8 +416,10 @@ int main(int argc, char * const *argv) {
                     // tell the client the conn socket via listening socket
                     uint16_t port_to_tell = ((struct sockaddr_in *)chi_addr)->sin_port;
                     sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
-                    printf("Server child is sending the port of newly created connection socket back to the client>\n");
-                    printf("\tport for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
+
+                    printf("[INFO] Server child is sending the port of newly created connection socket back to the client>\n");
+                    printf("\t[INFO]port for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
+
                     make_dgram(send_dgram, 
                             make_hdr(&send_hdr,
                                 random(),
@@ -474,7 +520,6 @@ handshake_2nd:
                                 read_size,
                                 &sent_size); /* TODO */ /* ARQ */
                         printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
-                        printf("\n");
 
                         signal(SIGALRM, sig_alarm); // for retransmission of data parts
                         set_no_rtt_time_out();
@@ -507,7 +552,7 @@ file_trans_again:
                             printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
                             if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                                printf("\n\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
+                                printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
                             } else {
                                 printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                             }
@@ -516,13 +561,29 @@ file_trans_again:
                         alarm(0); // disable alarm
                     }
 
-                    printf("[INFO] File %s sent complete!\n", filename);
+                    printf("\n[INFO] File %s sent complete!\n", filename);
                     printf("[INFO] Connection socket gonna close!\n");
                     close(conn_fd);
 
-                    // data transfer finished, gogogo
+                    // data transfer finished, end child process
                     exit(0);
+
                 } else {
+                    printf("[INFO] Server child #%d forked!\n", child_pid);
+
+                    // insert the new child with its init syn into list
+                    struct child_info * cur_child = malloc(sizeof(struct child_info));
+                    cur_child->pid = child_pid;
+                    cur_child->syn_init = recv_hdr.seq;
+                    cur_child->next = NULL;
+
+                    if(child_info_list == NULL) {
+                        cur_pt = child_info_list = cur_child;
+                    } else {
+                        cur_pt->next = cur_child;
+                        cur_pt = cur_pt->next;
+                    }
+
                     break; // parent
                 }
 
@@ -542,6 +603,12 @@ file_trans_again:
         free(sock_data_info[iter].ip_addr);
         free(sock_data_info[iter].net_mask);
         free(sock_data_info[iter].subn_addr);
+    }
+
+    for( ; child_info_list != NULL; ) {
+        struct child_info * temp = child_info_list;
+        child_info_list = child_info_list->next;
+        free(temp);
     }
 
     return 0;
