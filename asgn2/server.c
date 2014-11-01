@@ -389,14 +389,14 @@ int main(int argc, char * const *argv) {
                     signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                     set_no_rtt_time_out();
 handshake_2nd:
-                    if((sent_size = sendto(listen_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
+                    if((sent_size = sendto(listen_fd, send_dgram, sent_size, send_flag, 
                                     cli_addr, cli_len)) < 0) {
                         err_quit("sendto error: %e\n", errno);
                     }
 
                     if(no_rtt_time_out != no_rtt_init_time_out) { // this is a retransmission scenario
                         // should send the dgram via both listening and connection sock
-                        if((sent_size = sendto(conn_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
+                        if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                         cli_addr, cli_len)) < 0) {
                             err_quit("sendto error: %e\n", errno);
                         }
@@ -477,7 +477,7 @@ handshake_2nd:
                         signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                         set_no_rtt_time_out();
 file_trans_again:
-                        if((sent_size = sendto(conn_fd, send_dgram, DATAGRAM_SIZE, send_flag, 
+                        if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                         cli_addr, cli_len)) < 0) {
                             err_quit("sendto error: %e\n", errno);
                         }
