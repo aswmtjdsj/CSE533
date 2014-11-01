@@ -40,8 +40,9 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 }
 void data_callback(struct protocol *p, int nm) {
 	uint8_t *buf = malloc((DATAGRAM_SIZE-HDR_SIZE)*nm);
-	int ret = protocol_read(p, buf, nm);
-	log_info("[DATA %d datagrams]: %s\n", ret, buf);
+	ssize_t ret = protocol_read(p, buf, &nm);
+	buf[ret] = 0;
+	log_info("[DATA %d datagrams, %zd bytes]: %s\n", nm, ret, buf);
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == 0) {

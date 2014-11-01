@@ -69,5 +69,5 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 		 const char *filename, int recv_win, send_func sender,
 		 recv_func recvf, connect_cb cb);
 
-int protocol_read(struct protocol *p, uint8_t *buf, int ndgram);
+ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram);
 #endif

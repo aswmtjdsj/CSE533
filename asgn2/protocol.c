@@ -286,14 +286,16 @@ void protocol_destroy(struct protocol *p) {
 	free(p);
 }
 
-int protocol_read(struct protocol *p, uint8_t *buf, int ndgram) {
-	uint8_t *tmp = buf;
+ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram) {
 	int count = 0;
-	while((p->h != p->e) && count < ndgram) {
-		memcpy(tmp, p->window[p->h].buf, DATAGRAM_SIZE-HDR_SIZE);
-		tmp += DATAGRAM_SIZE-HDR_SIZE;
+	ssize_t len = 0;
+	while((p->h != p->e) && count < *ndgram) {
+		struct seg *tseg = &p->window[p->h];
+		memcpy(buf+len, tseg->buf, tseg->len);
+		len += tseg->len;
 		p->h = (p->h+1)%p->window_size;
 		count++;
 	}
-	return count;
+	*ndgram = count;
+	return len;
 }
