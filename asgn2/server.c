@@ -2,6 +2,8 @@
 #include "log.h"
 #include "protocol.h"
 #include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <setjmp.h>
 
 int read_serv_conf(struct serv_conf * conf) {
@@ -12,6 +14,8 @@ int read_serv_conf(struct serv_conf * conf) {
     fscanf(conf_file, " %d", &(conf->port_num));
     fscanf(conf_file, " %d", &(conf->sli_win_sz));
     fclose(conf_file);
+
+    return 0;
 }
 
 void print_serv_conf(const struct serv_conf * config) {
@@ -127,13 +131,13 @@ int main(int argc, char * const *argv) {
 
     // for interfaces
     struct ifi_info *ifi, *ifihead;
-    int ifi_hlen;
+    // int ifi_hlen;
     int inter_index = 0;
     struct sock_info_aux sock_data_info[MAX_INTERFACE_NUM];
 
     // temp var
-    u_char * yield_ptr = NULL;
-    struct sockaddr_in * s_ad;
+    // u_char * yield_ptr = NULL;
+    // struct sockaddr_in * s_ad;
     struct sockaddr * ip_addr, * net_mask, * sub_net, * br_addr, * dst_addr, 
                     * cli_addr = malloc(sizeof(struct sockaddr)),
                     * chi_addr = malloc(sizeof(struct sockaddr)); // cauz that
@@ -252,7 +256,7 @@ int main(int argc, char * const *argv) {
 
     // for TODO
     //
-    int first_seq = -1;
+    // int first_seq = -1;
     for( ; ; ) {
         printf("Expecting upcoming datagram...\n");
         max_fd_count = 0;
