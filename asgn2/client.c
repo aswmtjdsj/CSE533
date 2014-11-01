@@ -43,6 +43,7 @@ void data_callback(struct protocol *p, int nm) {
 	ssize_t ret = protocol_read(p, buf, &nm);
 	buf[ret] = 0;
 	log_info("[DATA %d datagrams, %zd bytes]: %s\n", nm, ret, buf);
+	free(buf);
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == 0) {
