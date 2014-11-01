@@ -11,8 +11,7 @@ int
 main(int argc, char **argv)
 {
 	struct ifi_info *ifi, *ifihead;
-	u_char *ptr;
-	int i, family, doaliases;
+	int family, doaliases;
 
 	if (argc != 3)
 		err_quit("usage: prifinfo_plus <inet4|inet6> <doaliases>", 1);

@@ -41,7 +41,7 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 void data_callback(struct protocol *p, int nm) {
 	uint8_t *buf = malloc((DATAGRAM_SIZE-HDR_SIZE)*nm);
 	int ret = protocol_read(p, buf, nm);
-	log_info("[DATA]: %s\n", buf);
+	log_info("[DATA %d datagrams]: %s\n", ret, buf);
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == 0) {
@@ -95,7 +95,6 @@ int main(int argc, char * const *argv) {
 	saddr.sin_family = AF_INET;
 	ret = islocal_addr(&saddr);
 	if (ret == 2) {
-		struct sockaddr_in laddr;
 		log_info("Server address is same machine\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);
 		flags = MSG_DONTROUTE;
@@ -105,10 +104,11 @@ int main(int argc, char * const *argv) {
 	}
 
 	void *ml = mainloop_new();
-	struct protocol *p = protocol_connect(ml, (struct sockaddr *)&saddr,
+	protocol_connect(ml, (struct sockaddr *)&saddr,
 	    flags, cfg.filename, cfg.recv_win, prob_send, prob_recv,
 	    connect_callback);
 
 	mainloop_run(ml);
 	free(ml);
+	return 0;
 }

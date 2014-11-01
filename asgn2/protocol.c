@@ -54,7 +54,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	}
 
 	if (ret < DATAGRAM_SIZE)
-		log_info("Short packet: %d bytes\n", ret);
+		log_info("Short packet: %zd bytes\n", ret);
 
 	size_t recv_size = ret;
 	struct tcp_header *hdr = (void *)buf;
@@ -84,7 +84,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		return;
 	}
-	log_info("Valid data packet received, seq %u, ack %u, size %u\n",
+	log_info("Valid data packet received, seq %u, ack %u, size %zu\n",
 		 hdr->seq, hdr->ack, recv_size);
 	if (hdr->seq >= p->tseq) {
 		while(p->tseq <= hdr->seq) {

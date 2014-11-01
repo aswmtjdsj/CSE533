@@ -108,12 +108,10 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 struct ifi_info *
 get_ifi_info(int family, int doaliases) {
 	struct ifi_info *ifi, *ifihead, **ifipnext;
-	int len, lastlen, flags, myflags, idx = 0;
-	char *ptr, *buf, lastname[IFNAMSIZ], *cptr, *haddr;
+	int len, lastlen, myflags, idx = 0;
+	char *ptr, *buf, lastname[IFNAMSIZ];
 	struct ifconf ifc;
 	struct ifreq *ifr, ifrcopy;
-	struct sockaddr_in *sinptr;
-	struct sockaddr_in6 *sin6ptr;
 
 	if (sockfd < 0) {
 		sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -210,8 +208,7 @@ check_address(struct sock_info_aux * host_addr,
 	char * tmp = NULL;
 	size_t addr_len = 0;
 	struct sockaddr_in *h_addr = (struct sockaddr_in *)host_addr->ip_addr,
-			   *h_mask = (struct sockaddr_in *)host_addr->net_mask,
-			   *h_sub = (struct sockaddr_in *)host_addr->subn_addr;
+			   *h_mask = (struct sockaddr_in *)host_addr->net_mask;
 
 	if (strcmp(sa_ntop(host_addr->ip_addr, &tmp, &addr_len), LOOP_BACK_ADDR) == 0 ||
 		h_addr->sin_addr.s_addr == ((struct sockaddr_in *)cur_addr)->sin_addr.s_addr) {

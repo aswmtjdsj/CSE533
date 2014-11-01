@@ -5,7 +5,7 @@ client_OBJS = client.o mainloop.o protocol.o utils.o
 server_OBJS = server.o utils.o
 OBJS = $(prifinfo_plus_OBJS) $(client_OBJS) $(server_OBJS)
 UNAME := $(shell uname -s)
-CFLAGS = -g -DLOG_LEVEL=10 -Wall
+CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
 	CFLAGS += -DBSD_COMP
