@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <time.h>
 #include "protocol.h"
 #include "log.h"
 #define SYN_TIMEOUT_SEC (3)
@@ -24,16 +25,18 @@ static int protocol_available_window(struct protocol *p) {
 }
 
 static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
-			uint16_t wsz, uint32_t ts, uint8_t *buf) {
+			uint16_t wsz, uint32_t tsecr, uint8_t *buf) {
 	struct tcp_header *hdr = (void *)buf;
 	hdr->ack = htonl(ack);
 	hdr->seq = htonl(seq);
 	hdr->flags = htons(flags);
 	hdr->window_size = htons(wsz);
-	hdr->tsecr = htonl(ts);
+	hdr->tsecr = htonl(tsecr);
 
 	//Set our own timestamp
-	
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	hdr->tsopt = htonl(t.tv_sec*1000+t.tv_nsec/1000000);
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {
