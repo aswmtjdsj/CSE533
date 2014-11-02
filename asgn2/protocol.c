@@ -41,7 +41,6 @@ static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	hdr->tsopt = htonl(t.tv_sec*1000+t.tv_nsec/1000000);
-	log_debug("Timestamp: %d\n", ntohl(hdr->tsopt));
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {

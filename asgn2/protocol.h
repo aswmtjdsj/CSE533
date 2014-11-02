@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include "utils.h"
 #include "mainloop.h"
+#include "log.h"
 
 #define DATAGRAM_SIZE 512
 
@@ -73,4 +74,27 @@ protocol_connect(void *ml, struct sockaddr *saddr, int flags,
 		 recv_func recvf, connect_cb cb);
 
 ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram);
+
+static void protocol_print(const uint8_t *buf, const char *prefix, int ntoh) {
+	struct tcp_header *hdr = (struct tcp_header *)buf;
+	uint16_t flags = hdr->flags;
+	if (ntoh)
+		flags = ntohs(flags);
+	log_info("%sFlags: ", prefix);
+	if (flags & HDR_SYN)
+		log_info("SYN ");
+	if (flags & HDR_ACK)
+		log_info("ACK ");
+	if (flags & HDR_FIN)
+		log_info("FIN ");
+	log_info("\n");
+	log_info("%sSeq: %u\n", prefix, ntoh ? ntohl(hdr->seq) : hdr->seq);
+	log_info("%sAck: %u\n", prefix, ntoh ? ntohl(hdr->ack) : hdr->ack);
+	log_info("%sTimestamp echo reply: %u\n", prefix, ntoh ?
+	    ntohl(hdr->tsecr) : hdr->tsecr);
+	log_info("%sTimestamp: %u\n", prefix, ntoh ?
+	    ntohl(hdr->tsopt) : hdr->tsopt);
+	log_info("%sWindow size advertisement: %u\n", prefix, ntoh ?
+	    ntohs(hdr->window_size) : hdr->window_size);
+}
 #endif

@@ -23,7 +23,8 @@ static pthread_t reader;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 	if (random() <= cfg.drop_rate*RAND_MAX) {
-		log_info("[send] Packet dropped\n");
+		log_info("\n[send] Following packet dropped: \n");
+		protocol_print(buf, "\t", 1);
 		return 0;
 	}
 	return send(fd, buf, len, flags);
@@ -38,7 +39,8 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 		}
 		if (random() > cfg.drop_rate*RAND_MAX)
 			return ret;
-		log_info("[recv] Packet dropeed\n");
+		log_info("\n[recv] Following packet dropeed: \n");
+		protocol_print(buf, "\t", 1);
 	}
 }
 void *reader_thread(void *d) {
