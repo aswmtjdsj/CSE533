@@ -255,7 +255,14 @@ int islocal_addr(struct sockaddr_in *saddr) {
 }
 
 void rtt_debug(struct rtt_info * ptr) {
-    // RTT debug
+    // RTT debug print
+    printf("[INFO] RTT info update! After receiving dgram!\n");
+    printf("\t[DEBUG] measured rtt: %d ms\n", ptr->rtt_rtt);
+    printf("\t[DEBUG] smoothed rtt: %d ms\n", ptr->rtt_srtt);
+    printf("\t[DEBUG] smoothed rtt mean deviation: %d ms\n", ptr->rtt_rttvar);
+    printf("\t[DEBUG] current rto: %d ms\n", ptr->rtt_rto);
+    printf("\t[DEBUG] retransmitted times: %d\n", ptr->rtt_nrexmt);
+    printf("\t[DEBUG] base timestamp: %u\n", ptr->rtt_base);
 }
 
 void rtt_init(struct rtt_info * ptr) {
@@ -312,6 +319,8 @@ void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
     /* h = 1/4 */
     ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2); 
     ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+
+    rtt_debug(ptr);
 }
 
 int rtt_timeout(struct rtt_info * ptr) {

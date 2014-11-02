@@ -510,6 +510,8 @@ handshake_2nd:
                     // we don't worry because we have re-trans and time-out mechanism
 
                     alarm(0); // no need to re-trans, disable alarm
+                    rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                    //which has server sending timestamp
 
                     // data transfer
                     // TODO
@@ -548,6 +550,7 @@ handshake_2nd:
                         signal(SIGALRM, sig_alarm); // for retransmission of data parts
                         // set_no_rtt_time_out();
                         // use RTT mechanism
+                        // init RTT counter for every dgram
                         rtt_newpack(&rtt);
 file_trans_again:
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
@@ -567,7 +570,7 @@ file_trans_again:
                                 goto file_trans_again;
                             }*/
                             if(rtt_timeout(&rtt) == 0) {
-                                printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d ms (round to %d s)\n", seq_num, filename, rtt.rtt_rto, rtt.rtt_rto / 1000);
+                                printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d s\n", seq_num, filename, rtt.rtt_rto / 1000);
                                 goto file_trans_again;
                             }
                             else {
@@ -608,6 +611,8 @@ file_trans_again:
                         } while(recv_hdr.window_size == 0 || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
                         alarm(0); // disable alarm
+                        rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                        //which has server sending timestamp
                     }
 
                     printf("\n[INFO] File %s sent complete!\n", filename);
