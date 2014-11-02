@@ -41,6 +41,7 @@ static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	hdr->tsopt = htonl(t.tv_sec*1000+t.tv_nsec/1000000);
+	log_debug("Timestamp: %d\n", ntohl(hdr->tsopt));
 	return;
 }
 static void protocol_data_callback(void *ml, void *data, int rw) {
@@ -152,6 +153,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	p->syn_ack = hdr->ack;
 	hdr->seq = ntohl(hdr->seq);
 	hdr->flags = ntohs(hdr->flags);
+	hdr->tsopt = ntohl(hdr->tsopt);
 
 	//Verify ack number
 	if (hdr->ack != p->syn_seq+1) {
