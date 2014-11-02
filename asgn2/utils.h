@@ -33,6 +33,8 @@ struct ifi_info {
 
 #define	IFI_ALIAS	1	/* ifi_addr is an alias */
 
+// for binding interfaces of server
+#define MAX_INTERFACE_NUM 10
 struct sock_info_aux {
     int sock_fd;
     struct sockaddr * ip_addr;
@@ -88,6 +90,26 @@ struct child_info {
     struct child_info * next;
 };
 
-#define MAX_INTERFACE_NUM 10
+// RTT measured in ms
+#define RTT_RXTMIN 1000
+#define RTT_RXTMAX 3000
+#define RTT_MAXNREXMT 12
+
+struct rtt_info {
+    int rtt_rtt; /* most recent measured RTT, in milliseconds */
+    int rtt_srtt; /* smoothed RTT estimator, in milliseconds */
+    int rtt_rttvar;
+    int rtt_rto;
+    int rtt_nrexmt;
+    uint32_t rtt_base;
+};
+
+void rtt_debug(struct rtt_info *);
+void rtt_init(struct rtt_info *);
+void rtt_newpack(struct rtt_info *);
+int rtt_start(struct rtt_info *);
+void rtt_stop(struct rtt_info *, uint32_t);
+int rtt_timeout(struct rtt_info *);
+uint32_t rtt_ts(struct rtt_info *);
 
 #endif

@@ -541,7 +541,10 @@ file_trans_again:
                             my_err_quit("sendto error");
                         }
 
-                        alarm(no_rtt_time_out);
+                        if(retrans_flag == 1) { // enable retransmission
+                            alarm(no_rtt_time_out);
+                        }
+
                         if(sigsetjmp(jmpbuf, 1) != 0) {
                             if(no_rtt_time_out < no_rtt_max_time_out) {
                                 printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d s\n", seq_num, filename, no_rtt_time_out);
@@ -564,7 +567,7 @@ file_trans_again:
                             printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
                             if(recv_hdr.window_size == 0) {
-                                printf("\t[ERROR] Receiver sending window is full! ACK dropped! Waiting for window updates!\n");
+                                printf("\t[ERROR] Receiver sliding window is full! ACK dropped! Waiting for window updates!\n");
                                 printf("\t[INFO] Retransmission disabled!\n");
                                 if(retrans_flag == 1) {
                                     alarm(0);
@@ -581,7 +584,7 @@ file_trans_again:
                                     printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                                 }
                             }
-                        } while(recv_hdr.window_size == 0 && recv_hdr.ack != ntohl(send_hdr.seq) + 1);
+                        } while(recv_hdr.window_size == 0 || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
                         alarm(0); // disable alarm
                     }
