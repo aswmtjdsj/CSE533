@@ -7,8 +7,6 @@
 #include "mainloop.h"
 #include "log.h"
 
-#define DATAGRAM_SIZE 512
-
 struct protocol;
 
 typedef ssize_t (*send_func)(int fd, uint8_t *buf, int len, int flags);

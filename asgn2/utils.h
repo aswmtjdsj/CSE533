@@ -19,6 +19,8 @@
 
 #define CASSERT(expr, str) typedef struct {int: -!!(expr); } assert_failed_##str
 
+#define DATAGRAM_SIZE 512
+
 struct ifi_info {
   char   ifi_name[IFI_NAME];	/* interface name, null-terminated */
   int    ifi_index;		/* interface index */
@@ -125,5 +127,12 @@ rtt_minmax(int rto) {
 
 // my own error handle func, with errno-string translation
 void my_err_quit(const char *);
+
+// sender sliding window
+struct sliding_window {
+    uint8_t data_buf[DATAGRAM_SIZE];
+    int data_sz;
+    uint32_t seq;
+};
 
 #endif
