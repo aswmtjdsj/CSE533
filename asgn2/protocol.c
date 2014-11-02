@@ -138,7 +138,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 
 static void protocol_synack_handler(void *ml, void *data, int rw) {
 	struct protocol *p = data;
-	uint8_t buf[DATAGRAM_SIZE];
+	uint8_t buf[DATAGRAM_SIZE], s[HDR_SIZE];
 	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
 	if (ret <= 0) {
 		/* Possibly simulated data loss */
@@ -196,12 +196,9 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	log_debug("Reconnected, port %u\n", nport);
 
 	//Send ACK
-	uint32_t tmp = hdr->ack;
-	hdr->ack = htonl(hdr->seq+1);
-	hdr->seq = htonl(tmp);
-	hdr->flags = htons(HDR_ACK);
-	hdr->window_size = htons(protocol_available_window(p));
-	p->send(p->fd, buf, DATAGRAM_SIZE, p->send_flags);
+	make_header(hdr->ack, p->eseq, HDR_ACK, protocol_available_window(p),
+	    hdr->tsopt, s);
+	p->send(p->fd, s, HDR_SIZE, p->send_flags);
 	p->state = ESTABLISHED;
 	fd_set_cb(p->fh, protocol_data_callback);
 	log_debug("ACK sent\n");
@@ -225,15 +222,13 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	}
 
 	//Build syn packet
-	struct tcp_header *hdr = (struct tcp_header *)pkt;
-	hdr->seq = htonl(p->syn_seq);
-	hdr->ack = 0;
-	hdr->window_size = htons(protocol_available_window(p));
-	hdr->flags = htons(HDR_SYN);
-	memcpy(hdr+1, p->filename, strlen(p->filename));
+	make_header(p->syn_seq, 0, HDR_SYN, protocol_available_window(p),
+	    0, pkt);
+	memcpy(pkt+HDR_SIZE, p->filename, strlen(p->filename));
 
 	log_info("SYN/ACK timedout, resending SYN...\n");
 	p->send(p->fd, pkt, len, p->send_flags);
+	free(pkt);
 
 	//Double the timeout
 	struct timeval tv2;
@@ -279,13 +274,10 @@ protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
 	p->h = p->t = p->e = 0;
 
 	//Build syn packet
-	struct tcp_header *hdr = (struct tcp_header *)pkt;
-	hdr->seq = random();
-	p->syn_seq = ntohl(hdr->seq);
-	hdr->ack = 0;
-	hdr->window_size = htons(protocol_available_window(p));
-	hdr->flags = htons(HDR_SYN);
-	memcpy(hdr+1, filename, strlen(filename));
+	p->syn_seq = random();
+	make_header(p->syn_seq, 0, HDR_SYN, protocol_available_window(p),
+	    0, pkt);
+	memcpy(pkt+HDR_SIZE, p->filename, strlen(p->filename));
 
 	sendf(sockfd, pkt, len, myflags);
 	free(pkt);

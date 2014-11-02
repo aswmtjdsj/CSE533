@@ -31,7 +31,9 @@ void *reader_thread(void *d) {
 	struct random_data buf;
 	struct protocol *p = d;
 	uint8_t dbuf[DATAGRAM_SIZE*10];
-	char *sbuf = malloc(100);
+	char *sbuf = malloc(128);
+	memset(sbuf, 0, 128);
+	memset(&buf, 0, sizeof(buf));
 	int ret = initstate_r(cfg.seed, sbuf, 100, &buf);
 	if (ret != 0) {
 		log_warning("[reader_thread] srandom_r failed, %d\n",
@@ -66,7 +68,7 @@ nsleep:
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		timespec_substract(&end, &start);
-		double st = end.tv_sec+(double)end.tv_nsec/1000000000.0;
+		//double st = end.tv_sec+(double)end.tv_nsec/1000000000.0;
 		//log_info("[reader_thread] slept for %lf milliseconds "
 		//    "(%lf expected).\n", st*1000, (double)tmpf);
 		int count, tc = 0, tb = 0;
