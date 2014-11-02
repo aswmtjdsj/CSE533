@@ -524,7 +524,7 @@ handshake_2nd:
                         make_dgram(send_dgram,
                                 make_hdr(&send_hdr,
                                     recv_hdr.ack,
-                                    recv_hdr.seq+1,
+                                    recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
                                     0,
                                     0), /* TODO */
                                 file_buf,
@@ -562,12 +562,14 @@ file_trans_again:
                             parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
                             printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
-                            if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
+                            if(recv_hdr.window_size == 0) {
+                                printf("\t[INFO] Receiver sending window is full! ACK dropped! Waiting for window updates!\n");
+                            } else if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
                                 printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
                             } else {
                                 printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                             }
-                        } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
+                        } while(recv_hdr.window_size == 0 && recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
                         alarm(0); // disable alarm
                     }
