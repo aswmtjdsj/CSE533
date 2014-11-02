@@ -1,14 +1,18 @@
 CC = gcc
-LIBS = -lrt
+LIBS = 
 prifinfo_plus_OBJS = utils.o prifinfo_plus.o
 client_OBJS = client.o mainloop.o protocol.o utils.o
+client_LIBS = -lm -lrt
 server_OBJS = server.o utils.o
 OBJS = $(prifinfo_plus_OBJS) $(client_OBJS) $(server_OBJS)
 UNAME := $(shell uname -s)
 CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
-	CFLAGS += -DBSD_COMP
+	client_LIBS += -lpthread
+	CFLAGS += -DBSD_COMP -D_REENTRANT
+else
+	client_LIBS += -pthread
 endif
 
 all: $(OBJS) prifinfo_plus client server
@@ -22,7 +26,7 @@ prifinfo_plus: $(prifinfo_plus_OBJS)
 	$(CC) $(CFLAGS) -o prifinfo_plus $(prifinfo_plus_OBJS) $(LIBS)
 
 client: $(client_OBJS)
-	$(CC) $(CFLAGS) -o client $(client_OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o client $(client_OBJS) $(client_LIBS) $(LIBS)
 
 server: $(server_OBJS)
 	$(CC) $(CFLAGS) -o server $^ $(LIBS)

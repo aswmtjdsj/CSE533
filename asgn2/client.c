@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <math.h>
 #include "protocol.h"
 #include "mainloop.h"
 #include "utils.h"
@@ -18,25 +19,78 @@ static struct cfg {
 	double drop_rate;
 	double read_rate;
 }cfg;
-void timer_callback(void *ml, void *data, const struct timeval *elapsed) {
-	double e = elapsed->tv_sec;
-	struct timeval *xx = data;
-	double e2 = xx->tv_sec;
-	e2 += ((double)xx->tv_usec)/1e6;
-	e += ((double)elapsed->tv_usec)/1e6;
-	fprintf(stderr, "expected %lf, real %lf\n", e2, e);
-	free(data);
-}
-void timeout_handler(void *ml, void *data, const struct timeval *elapsed) {
-}
-void sock_read_handler(void *ml, void *data, int rw) {
-}
+static pthread_t reader;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 	return send(fd, buf, len, flags);
 }
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 	return recv(fd, buf, len, flags);
+}
+void *reader_thread(void *d) {
+	struct random_data buf;
+	struct protocol *p = d;
+	uint8_t dbuf[DATAGRAM_SIZE*10];
+	char *sbuf = malloc(100);
+	int ret = initstate_r(cfg.seed, sbuf, 100, &buf);
+	if (ret != 0) {
+		log_warning("[reader_thread] srandom_r failed, %d\n",
+		    ret);
+		perror("");
+		return NULL;
+	}
+	while(1) {
+		struct timespec start, rt, end;
+		int tmpi;
+		double tmpf;
+		random_r(&buf, &tmpi);
+		tmpf = (double)tmpi/(double)RAND_MAX;
+		tmpf = -1*cfg.read_rate*log(tmpf);
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		rt = start;
+		rt.tv_nsec += tmpf*1000000;
+		rt.tv_sec += rt.tv_nsec/1000000000;
+		rt.tv_nsec %= 1000000000;
+nsleep:
+		//log_info("[read_thread] Now going back to sleep\n");
+		ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
+				      &rt, NULL);
+		if (ret < 0) {
+			if (errno != EINTR) {
+				log_warning("[reader_thread] failed to sleep, "
+				    "%s\n", strerror(errno));
+				return NULL;
+			}
+			goto nsleep;
+		}
+
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		timespec_substract(&end, &start);
+		double st = end.tv_sec+(double)end.tv_nsec/1000000000.0;
+		//log_info("[reader_thread] slept for %lf milliseconds "
+		//    "(%lf expected).\n", st*1000, (double)tmpf);
+		int count, tc = 0, tb = 0;
+		while(1) {
+			count = 10;
+			ret = protocol_read(p, dbuf, &count);
+			if (count == 0) {
+				if (ret < 0) {
+					log_info("[reader_thread] Connection "
+					    "terminated, reader_thread quiting"
+					    "...\n");
+					return NULL;
+				}
+				break;
+			}
+			tc += count;
+			tb += ret;
+			dbuf[ret] = 0;
+			log_info("[DATA] %s", dbuf);
+		}
+		//log_info("[reader_thread] read %d datagrams "
+		//    "(%d bytes) in total.\n", tc, tb);
+	}
+	return NULL;
 }
 void data_callback(struct protocol *p, int nm) {
 	uint8_t *buf = malloc((DATAGRAM_SIZE-HDR_SIZE)*nm);
@@ -47,7 +101,15 @@ void data_callback(struct protocol *p, int nm) {
 }
 void connect_callback(struct protocol *p, int err) {
 	if (err == 0) {
+#if 0
+		//Use a callback to read data
 		p->dcb = data_callback;
+		//Or insert a timer to read data
+		void *th = timer_insert(xxxxx);
+#endif
+		//Use a separate thread to read data;
+		pthread_create(&reader, NULL, reader_thread, p);
+		pthread_detach(reader);
 		return;
 	}
 	if (err == ETIMEDOUT) {

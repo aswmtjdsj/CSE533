@@ -14,6 +14,7 @@ static struct protocol *protocol_new(void *ml) {
 	x->state = CLOSED;
 	x->ml = ml;
 	x->window_size = 10;
+	pthread_mutex_init(&x->window_lock, NULL);
 	return x;
 }
 
@@ -21,6 +22,8 @@ static int protocol_available_window(struct protocol *p) {
 	int tmp = p->h-p->e;
 	if (tmp < 0)
 		tmp += p->window_size;
+	else
+		tmp--;
 	return tmp;
 }
 
@@ -88,20 +91,29 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		 hdr->seq, hdr->ack, recv_size);
 	if (hdr->seq >= p->tseq) {
 		while(p->tseq <= hdr->seq) {
+			if ((p->t+1)%(p->window_size+1) == p->h)
+				break;
 			p->window[p->t].present = 0;
-			p->t = (p->t+1)%p->window_size;
+			p->t = (p->t+1)%(p->window_size+1);
 			p->tseq++;
+		}
+		if (p->tseq <= hdr->seq) {
+			log_warning("Client sent a packet that does not fit "
+			    "into our window, discard\n");
+			return;
 		}
 	}
 
-	int tmp = (p->e+hdr->seq-p->eseq)%p->window_size;
+	int tmp = (p->e+hdr->seq-p->eseq)%(p->window_size+1);
 	p->window[tmp].len = recv_size-HDR_SIZE;
 	memcpy(p->window[tmp].buf, hdr+1, recv_size-HDR_SIZE);
 	p->window[tmp].present = 1;
 	while(p->window[p->e].present && p->e != p->t) {
-		p->e = (p->e+1)%p->window_size;
+		p->e = (p->e+1)%(p->window_size+1);
 		p->eseq++;
+		log_debug("%d\n", p->e);
 	}
+	pthread_mutex_lock(&p->window_lock);
 	make_header(hdr->ack, p->eseq, HDR_ACK,
 		    protocol_available_window(p), hdr->tsopt, s);
 	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
@@ -109,9 +121,10 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	if (p->e != p->h && p->dcb) {
 		int tmp = p->e-p->h;
 		if (tmp < 0)
-			tmp += p->window_size;
+			tmp += p->window_size+1;
 		p->dcb(p, tmp);
 	}
+	pthread_mutex_unlock(&p->window_lock);
 	return;
 }
 
@@ -128,6 +141,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	struct tcp_header *hdr = (void *)buf;
 	hdr->window_size = ntohs(hdr->window_size);
 	hdr->ack = ntohl(hdr->ack);
+	p->syn_ack = hdr->ack;
 	hdr->seq = ntohl(hdr->seq);
 	hdr->flags = ntohs(hdr->flags);
 
@@ -286,16 +300,51 @@ void protocol_destroy(struct protocol *p) {
 	free(p);
 }
 
+static void
+protocol_send_ack(void *ml, void *data, const struct timeval *elapse) {
+	struct protocol *p = data;
+	uint8_t buf[HDR_SIZE];
+	int wsz;
+	pthread_mutex_lock(&p->window_lock);
+	wsz = protocol_available_window(p);
+	pthread_mutex_unlock(&p->window_lock);
+	make_header(p->syn_ack, p->eseq, HDR_ACK, wsz, 0, buf);
+
+	log_info("Resend a ACK because window become available again, new "
+	    "window size: %d\n", wsz);
+	p->send(p->fd, buf, HDR_SIZE, p->send_flags);
+}
+
 ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram) {
 	int count = 0;
 	ssize_t len = 0;
+	int prev_win = 0, win = 0;
+	pthread_mutex_lock(&p->window_lock);
+	prev_win = protocol_available_window(p);
 	while((p->h != p->e) && count < *ndgram) {
 		struct seg *tseg = &p->window[p->h];
 		memcpy(buf+len, tseg->buf, tseg->len);
 		len += tseg->len;
-		p->h = (p->h+1)%p->window_size;
+		p->h = (p->h+1)%(p->window_size+1);
 		count++;
 	}
+	win = protocol_available_window(p);
+	pthread_mutex_unlock(&p->window_lock);
 	*ndgram = count;
+	if (count == 0 && p->state != ESTABLISHED) {
+		if (p->state == SYN_SENT)
+			return 0;
+		//Connection closed
+		return -1;
+	}
+	if (prev_win == 0 && win > 0 && p->state == ESTABLISHED) {
+		//Resend ACK
+		struct timeval tmptv;
+		tmptv.tv_sec = 0;
+		tmptv.tv_usec = 0;
+		//Don't waste the reader thread's time
+		//Queue a timer so the work is done in mainloop
+		timer_insert(p->ml, &tmptv, protocol_send_ack, p);
+	}
 	return len;
 }

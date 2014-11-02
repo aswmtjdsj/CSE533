@@ -2,6 +2,7 @@
 #define __PROTOCOL_H__
 #include <sys/time.h>
 #include <stdint.h>
+#include <pthread.h>
 #include "utils.h"
 #include "mainloop.h"
 
@@ -40,7 +41,9 @@ struct protocol {
 	/* head and tail of the window */
 	int h, t, e;
 	int eseq, tseq;
+	int syn_ack;
 	struct seg *window;
+	pthread_mutex_t window_lock;
 	char *filename;
 };
 
