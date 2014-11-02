@@ -256,7 +256,7 @@ int islocal_addr(struct sockaddr_in *saddr) {
 
 void rtt_debug(struct rtt_info * ptr) {
     // RTT debug print
-    printf("[INFO] RTT info update! After receiving dgram!\n");
+    printf("\n[INFO] RTT info update!\n");
     printf("\t[DEBUG] measured rtt: %d ms\n", ptr->rtt_rtt);
     printf("\t[DEBUG] smoothed rtt: %d ms\n", ptr->rtt_srtt);
     printf("\t[DEBUG] smoothed rtt mean deviation: %d ms\n", ptr->rtt_rttvar);

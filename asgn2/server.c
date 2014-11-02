@@ -505,13 +505,15 @@ handshake_2nd:
                         } else {
                             printf("\t[ERROR] Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                         } // if wrong ack, then we should just drop the dgram and re-receive
-                        printf("\n");
                     } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
                     // we don't worry because we have re-trans and time-out mechanism
 
                     alarm(0); // no need to re-trans, disable alarm
-                    rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
-                    //which has server sending timestamp
+
+                    if(recv_hdr.tsecr != 0) { // fake, TODO
+                        rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                        //which has server sending timestamp
+                    }
 
                     // data transfer
                     // TODO
@@ -526,7 +528,7 @@ handshake_2nd:
                     int seq_num = 0;
                     int read_size = 0;
                     uint8_t retrans_flag = 1;
-                    printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
+                    printf("\n[INFO] Server child is going to send file \"%s\"!\n", filename);
                     while((read_size = fread(file_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file)) != 0) {
 
                         file_buf[read_size] = 0;
@@ -611,8 +613,11 @@ file_trans_again:
                         } while(recv_hdr.window_size == 0 || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
                         alarm(0); // disable alarm
-                        rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
-                        //which has server sending timestamp
+
+                        if(recv_hdr.tsecr != 0) { // fake
+                            rtt_stop(&rtt, rtt_ts(&rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                            //which has server sending timestamp
+                        }
                     }
 
                     printf("\n[INFO] File %s sent complete!\n", filename);
