@@ -254,4 +254,81 @@ int islocal_addr(struct sockaddr_in *saddr) {
 	return ret;
 }
 
+void rtt_debug(struct rtt_info * ptr) {
+}
+
+
+void rtt_init(struct rtt_info * ptr) {
+    struct timeval tv;
+    if(gettimeofday(&tv, NULL) < 0) {
+	my_err_quit("gettimeofday error");
+    }
+
+    ptr->rtt_base = tv.tv_usec / 1000; /* # msec since 1/1/1970 at start */
+    ptr->rtt_rtt = 0;
+    ptr->rtt_srtt = 0;
+    ptr->rtt_rttvar = 750;
+    ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+    /* first RTO at (srtt + (4 * rttvar)) = 3000 mseconds */
+}
+
+uint32_t rtt_ts(struct rtt_info * ptr) {
+    uint32_t ts;
+    struct timeval tv;
+    if(gettimeofday(&tv, NULL) < 0) {
+	my_err_quit("gettimeofday error");
+    }
+
+    ts = ((tv.tv_sec - ptr->rtt_base) * 1000) + (tv. tv_usec / 1000);
+    // actually, this one has been arithmetic overflow
+    // but we can still use it
+    return (ts);
+}
+
+void rtt_newpack(struct rtt_info * ptr) {
+    ptr->rtt_nrexmt = 0;
+}
+
+int rtt_start(struct rtt_info * ptr) {
+    return ptr->rtt_rto / 1000;
+    /* return value can be used as: alarm(rtt_start(&foo)) */
+    /* should be change to in second */
+}
+
+void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
+    int delta;
+    ptr->rtt_rtt = ms; /* measured RTT in milliseconds */
+    /*
+     * Update our estimators of RTT and mean deviation of RTT.
+     * * See Jacobson's SIGCOMM '88 paper, Appendix A, for the details.
+     * */
+    delta = ptr->rtt_rtt - ptr->rtt_srtt;
+    ptr->rtt_srtt += (delta >> 3); /* g = 1/8 */
+
+    if (delta < 0.0) {
+	delta = -delta;
+    }
+
+    /* h = 1/4 */
+    ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2); 
+    ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+}
+
+
+int rtt_timeout(struct rtt_info * ptr) {
+    ptr->rtt_rto <<= 1;
+    /* next RTO */
+    /* after doubling the RTO, pass its value through the function rtt_minmax */
+    ptr->rtt_rto = rtt_minmax(ptr->rtt_rto);
+    if (++ptr->rtt_nrexmt > RTT_MAXNREXMT)
+	return (-1);
+    /* time to give up for this packet */
+
+    return (0);
+}
+void my_err_quit(const char * prompt) {
+    printf("%s: %s\n", prompt, strerror(errno));
+    exit(EXIT_FAILURE);
+}
+
 /* vim: set noexpandtab tabstop=8: */

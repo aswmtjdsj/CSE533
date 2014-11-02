@@ -7,12 +7,6 @@
 #include <sys/wait.h>
 #include <setjmp.h>
 
-// my own error handle func, with errno-string translation
-void my_err_quit(const char * prompt) {
-    printf("%s: %s\n", prompt, strerror(errno));
-    exit(EXIT_FAILURE);
-}
-
 int read_serv_conf(struct serv_conf * conf) {
     FILE * conf_file = fopen("server.in", "r");
     if(conf_file == NULL) {

@@ -12,6 +12,7 @@
 #include <string.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <sys/time.h>
 
 #define IFI_NAME 16		/* same as IFNAMSIZ in <net/if.h> */
 #define IFI_HADDR  8		/* allow for 64-bit EUI-64 in future */
@@ -95,13 +96,14 @@ struct child_info {
 #define RTT_RXTMAX 3000
 #define RTT_MAXNREXMT 12
 
+#define RTT_RTOCALC(ptr) ((ptr)->rtt_srtt + (((ptr)->rtt_rttvar) << 2))
 struct rtt_info {
     int rtt_rtt; /* most recent measured RTT, in milliseconds */
     int rtt_srtt; /* smoothed RTT estimator, in milliseconds */
-    int rtt_rttvar;
-    int rtt_rto;
-    int rtt_nrexmt;
-    uint32_t rtt_base;
+    int rtt_rttvar; /* smoothed mean deviation, in milliseconds */ 
+    int rtt_rto; /* current RTO to use, in milliseconds */
+    int rtt_nrexmt; /* # times retransmitted: 0, 1, 2, ... */
+    uint32_t rtt_base; /* # msec since 1/1/1970 at start */
 };
 
 void rtt_debug(struct rtt_info *);
@@ -111,5 +113,17 @@ int rtt_start(struct rtt_info *);
 void rtt_stop(struct rtt_info *, uint32_t);
 int rtt_timeout(struct rtt_info *);
 uint32_t rtt_ts(struct rtt_info *);
+
+static int 
+rtt_minmax(int rto) {
+    if (rto < RTT_RXTMIN)
+        rto = RTT_RXTMIN;
+    else if (rto > RTT_RXTMAX)
+        rto = RTT_RXTMAX;
+    return (rto);
+}
+
+// my own error handle func, with errno-string translation
+void my_err_quit(const char *);
 
 #endif
