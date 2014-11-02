@@ -528,7 +528,11 @@ handshake_2nd:
                         printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
 
                         signal(SIGALRM, sig_alarm); // for retransmission of data parts
-                        set_no_rtt_time_out();
+                        // set_no_rtt_time_out();
+                        // use RTT mechanism
+                        struct rtt_info rtt;
+                        rtt_init(&rtt);
+                        rtt_newpack(&rtt);
 file_trans_again:
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                         cli_addr, cli_len)) < 0) {
@@ -536,17 +540,22 @@ file_trans_again:
                         }
 
                         if(retrans_flag == 1) { // enable retransmission
-                            alarm(no_rtt_time_out);
+                            // alarm(no_rtt_time_out);
+                            alarm(rtt_start(&rtt));
                         }
 
                         if(sigsetjmp(jmpbuf, 1) != 0) {
-                            if(no_rtt_time_out < no_rtt_max_time_out) {
+                            /*if(no_rtt_time_out < no_rtt_max_time_out) {
                                 printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d s\n", seq_num, filename, no_rtt_time_out);
                                 no_rtt_time_out += 3;
                                 goto file_trans_again;
+                            }*/
+                            if(rtt_timeout(&rtt) == 0) {
+                                printf("\t[INFO] Resend #%d part of file %s after retransmission time-out %d ms (round to %d s)\n", seq_num, filename, rtt.rtt_rto, rtt.rtt_rto / 1000);
+                                goto file_trans_again;
                             }
                             else {
-                                printf("[ERROR] Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                                printf("[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
                                 exit(1);
                             }
                         }
@@ -570,7 +579,9 @@ file_trans_again:
                             } else { // should enable retransmission
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
-                                    alarm(no_rtt_time_out);
+                                    // alarm(no_rtt_time_out);
+                                    printf("\t[INFO] Receiver sliding window is open now! Enable retransmission!\n");
+                                    alarm(rtt_start(&rtt));
                                 }
                                 if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
                                     printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
