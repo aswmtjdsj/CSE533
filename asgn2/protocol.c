@@ -20,10 +20,11 @@ static struct protocol *protocol_new(void *ml) {
 
 static int protocol_available_window(struct protocol *p) {
 	int tmp = p->h-p->e;
-	if (tmp < 0)
+	if (tmp <= 0)
 		tmp += p->window_size;
 	else
 		tmp--;
+	assert(tmp >= 0);
 	return tmp;
 }
 
@@ -91,15 +92,19 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		 hdr->seq, hdr->ack, recv_size);
 	if (hdr->seq >= p->tseq) {
 		while(p->tseq <= hdr->seq) {
-			if ((p->t+1)%(p->window_size+1) == p->h)
+			int next_t = (p->t+1)%(p->window_size+1);
+			if (next_t == p->h)
 				break;
 			p->window[p->t].present = 0;
-			p->t = (p->t+1)%(p->window_size+1);
+			p->t = next_t;
 			p->tseq++;
 		}
 		if (p->tseq <= hdr->seq) {
 			log_warning("Client sent a packet that does not fit "
-			    "into our window, discard\n");
+			    "into our window, discarded, and resend ACK\n");
+			make_header(hdr->ack, p->eseq, HDR_ACK, owsz,
+			    hdr->tsopt, s);
+			p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 			return;
 		}
 	}
@@ -114,9 +119,12 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		log_debug("%d\n", p->e);
 	}
 	pthread_mutex_lock(&p->window_lock);
-	make_header(hdr->ack, p->eseq, HDR_ACK,
-		    protocol_available_window(p), hdr->tsopt, s);
+	owsz = protocol_available_window(p);
+	make_header(hdr->ack, p->eseq, HDR_ACK, owsz, hdr->tsopt, s);
 	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+
+	if (owsz <= 0)
+		log_info("Window is full\n");
 
 	if (p->e != p->h && p->dcb) {
 		int tmp = p->e-p->h;
@@ -300,21 +308,6 @@ void protocol_destroy(struct protocol *p) {
 	free(p);
 }
 
-static void
-protocol_send_ack(void *ml, void *data, const struct timeval *elapse) {
-	struct protocol *p = data;
-	uint8_t buf[HDR_SIZE];
-	int wsz;
-	pthread_mutex_lock(&p->window_lock);
-	wsz = protocol_available_window(p);
-	pthread_mutex_unlock(&p->window_lock);
-	make_header(p->syn_ack, p->eseq, HDR_ACK, wsz, 0, buf);
-
-	log_info("Resend a ACK because window become available again, new "
-	    "window size: %d\n", wsz);
-	p->send(p->fd, buf, HDR_SIZE, p->send_flags);
-}
-
 ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram) {
 	int count = 0;
 	ssize_t len = 0;
@@ -339,12 +332,11 @@ ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram) {
 	}
 	if (prev_win == 0 && win > 0 && p->state == ESTABLISHED) {
 		//Resend ACK
-		struct timeval tmptv;
-		tmptv.tv_sec = 0;
-		tmptv.tv_usec = 0;
-		//Don't waste the reader thread's time
-		//Queue a timer so the work is done in mainloop
-		timer_insert(p->ml, &tmptv, protocol_send_ack, p);
+		uint8_t s[HDR_SIZE];
+		log_info("Resend ACK to notify window opening, new window size"
+		    ": %d\n", win);
+		make_header(p->syn_ack, p->eseq, HDR_ACK, win, 0, s);
+		p->send(p->fd, s, HDR_SIZE, p->send_flags);
 	}
 	return len;
 }
