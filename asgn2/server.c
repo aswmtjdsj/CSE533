@@ -113,6 +113,7 @@ struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack
     hdr->flags = flags;
     hdr->window_size = window_sz;
 
+    printf("\t[DEBUG] Dgram to be sent!\n");
     print_hdr(hdr);
 
     hdr->seq = htonl(seq);
@@ -150,6 +151,7 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
     hdr->flags = ntohs(hdr->flags);
     hdr->window_size = ntohs(hdr->window_size);
     
+    printf("\t[DEBUG] Dgram received!\n");
     print_hdr(hdr);
 }
 
@@ -562,12 +564,20 @@ handshake_2nd:
 
                         // load file content into window buffer
                         int sli_window_index = sent_not_ack;
-                        if(read_size != 0) { // if no new data can be read, then no need to update window_end
+                        /*if(read_size != 0) { // if no new data can be read, then no need to update window_end
                             window_end = (window_start + sli_win_sz - 1) % config_serv.sli_win_sz;
+                        }*/
+                        printf("[DEBUG] window start: %d - window end: %d\n", window_start, window_end);
+                        if(window_start > window_end) {
+                            printf("[INFO] All data sent done! Sender stopped!\n");
+                            break;
                         }
-                        avail_win_sz -= sli_win_sz; // subtract used win size
-                        int num = window_end - sent_not_ack + 1;
-                        while(num--) {
+                        int idx; 
+                        for(idx = 1; idx <= sli_win_sz; idx++) { // though obviously bigger than needed to be sent
+                            if(idx + ((sent_not_ack - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz) > sli_win_sz) {
+                                window_end = (sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz;
+                                break;
+                            }
                             // the first time to read the file
                             if(read_size == -1) {
                                 sli_win[sli_window_index].seq = recv_hdr.ack;
@@ -575,24 +585,29 @@ handshake_2nd:
                             else {
                                 // last dgram seq + 1
                                 sli_win[sli_window_index].seq = \
-                                    sli_win[(sli_window_index-1+config_serv.sli_win_sz)%config_serv.sli_win_sz].seq;
+                                    sli_win[(sli_window_index-1+config_serv.sli_win_sz)%config_serv.sli_win_sz].seq + 1;
                             }
                             read_size = fread(sli_win[sli_window_index].data_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file);
                             sli_win[sli_window_index].data_buf[read_size] = 0;
                             if(read_size == 0) {// ==0 means read to the end of file
                                 window_end = (sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz;
+                                printf("[INFO] Get to the end of data file! The last datagram seq would be #%d\n", sli_win[window_end].seq);
                                 break;
                             }
                             sli_win[sli_window_index].data_sz = read_size;
                             sli_window_index = (sli_window_index + 1) % config_serv.sli_win_sz;
                         }
+                        sli_win_sz = (window_end - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz;
+                        avail_win_sz -= sli_win_sz; // subtract used win size
+
                         if(avail_win_sz == 0) {
                             printf("[INFO] Sender sliding window is full!\n");
                         }
 
-                        num = window_end - sent_not_ack + 1;
+                        sli_window_index = sent_not_ack;
+                        int num = window_end - sent_not_ack + 1;
                         printf("\t[INFO] Sending window gonna send Datagram seq [#%d - #%d]\n", sli_win[sent_not_ack].seq, sli_win[window_end].seq);
-                        while(num--) {
+                        while(num-- > 0) {
                             // sent_size = sizeof(struct tcp_header) + read_size;
 
                             // printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
