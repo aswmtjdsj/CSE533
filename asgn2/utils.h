@@ -133,6 +133,7 @@ struct sliding_window {
     uint8_t data_buf[DATAGRAM_SIZE];
     int data_sz;
     uint32_t seq;
+    struct rtt_info rtt;
 };
 
 #endif
