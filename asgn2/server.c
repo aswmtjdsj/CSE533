@@ -55,7 +55,7 @@ void print_hdr(struct tcp_header * hdr) {
     if(hdr->flags & HDR_FIN) {
         log_info("\t[DEBUG] flagged with: FIN\n");
     }
-    log_info("\t[DEBUG] window size: %d\n", hdr->window_size);
+    log_info("\t[DEBUG] window size: %u\n", hdr->window_size);
 }
 
 /*
@@ -141,12 +141,12 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
         memcpy(payload, dgram + sizeof(struct tcp_header), recv_size - sizeof(struct tcp_header));
     }
 
-    print_hdr(hdr);
-
     hdr->ack = ntohl(hdr->ack); // network presentation to host
     hdr->seq = ntohl(hdr->seq);
     hdr->flags = ntohs(hdr->flags);
     hdr->window_size = ntohs(hdr->window_size);
+    
+    print_hdr(hdr);
 }
 
 int main(int argc, char * const *argv) {
@@ -513,6 +513,7 @@ handshake_2nd:
                     char file_buf[DATAGRAM_SIZE];
                     int seq_num = 0;
                     int read_size = 0;
+                    uint8_t retrans_flag = 1;
                     printf("[INFO] Server child is going to send file \"%s\"!\n", filename);
                     while((read_size = fread(file_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file)) != 0) {
 
@@ -563,11 +564,22 @@ file_trans_again:
                             printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
                             if(recv_hdr.window_size == 0) {
-                                printf("\t[INFO] Receiver sending window is full! ACK dropped! Waiting for window updates!\n");
-                            } else if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                                printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
-                            } else {
-                                printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                                printf("\t[ERROR] Receiver sending window is full! ACK dropped! Waiting for window updates!\n");
+                                printf("\t[INFO] Retransmission disabled!\n");
+                                if(retrans_flag == 1) {
+                                    alarm(0);
+                                    retrans_flag = 0;
+                                }
+                            } else { // should enable retransmission
+                                if(retrans_flag == 0) {
+                                    retrans_flag = 1;
+                                    alarm(no_rtt_time_out);
+                                }
+                                if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
+                                    printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
+                                } else {
+                                    printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                                }
                             }
                         } while(recv_hdr.window_size == 0 && recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
