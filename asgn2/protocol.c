@@ -83,6 +83,11 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		return;
 	}
 
+	if (hdr->ack != p->syn_ack) {
+		log_info("Invalid ACK number, discarding...\n");
+		return;
+	}
+
 	if (hdr->seq < p->eseq) {
 		log_info("Duplicated packet received, resending ACK\n");
 		make_header(hdr->ack, p->eseq, HDR_ACK, owsz, hdr->tsopt, s);
@@ -237,7 +242,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	tv2.tv_sec = tv->tv_sec;
 	tv2.tv_usec = 0;
 	timer_add(&tv2, &tv2);
-	timer_insert(p->ml, &tv2, protocol_syn_timeout, p);
+	p->timeout = timer_insert(p->ml, &tv2, protocol_syn_timeout, p);
 	log_info("Next SYN timeout: %lfs\n", tv2.tv_sec+tv2.tv_usec/1e6);
 }
 

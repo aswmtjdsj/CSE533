@@ -22,10 +22,24 @@ static struct cfg {
 static pthread_t reader;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
+	if (random() <= cfg.drop_rate*RAND_MAX) {
+		log_info("[send] Packet dropped\n");
+		return 0;
+	}
 	return send(fd, buf, len, flags);
 }
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
-	return recv(fd, buf, len, flags);
+	while(1) {
+		int ret = recv(fd, buf, len, flags);
+		if (ret < 0) {
+			if (errno == EAGAIN)
+				return 0;
+			return ret;
+		}
+		if (random() > cfg.drop_rate*RAND_MAX)
+			return ret;
+		log_info("[recv] Packet dropeed\n");
+	}
 }
 void *reader_thread(void *d) {
 	struct random_data buf;
@@ -132,7 +146,6 @@ int main(int argc, char * const *argv) {
 		log_warning("Failed to open %s\n", cfgname);
 		return 1;
 	}
-	srandom(time(NULL));
 
 	fgets(cfg.addr, sizeof(cfg.addr), cfgfile);
 	if (!iseols(cfg.addr))
@@ -154,6 +167,7 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
+	srandom(cfg.seed);
 	struct sockaddr_in saddr;
 	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
