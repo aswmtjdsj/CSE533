@@ -255,8 +255,8 @@ int islocal_addr(struct sockaddr_in *saddr) {
 }
 
 void rtt_debug(struct rtt_info * ptr) {
+    // RTT debug
 }
-
 
 void rtt_init(struct rtt_info * ptr) {
     struct timeval tv;
@@ -264,7 +264,7 @@ void rtt_init(struct rtt_info * ptr) {
 	my_err_quit("gettimeofday error");
     }
 
-    ptr->rtt_base = tv.tv_usec / 1000; /* # msec since 1/1/1970 at start */
+    ptr->rtt_base = tv.tv_sec * 1000 + tv.tv_usec / 1000; /* # msec since 1/1/1970 at start */
     ptr->rtt_rtt = 0;
     ptr->rtt_srtt = 0;
     ptr->rtt_rttvar = 750;
@@ -314,7 +314,6 @@ void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
     ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 }
 
-
 int rtt_timeout(struct rtt_info * ptr) {
     ptr->rtt_rto <<= 1;
     /* next RTO */
@@ -326,6 +325,7 @@ int rtt_timeout(struct rtt_info * ptr) {
 
     return (0);
 }
+
 void my_err_quit(const char * prompt) {
     printf("%s: %s\n", prompt, strerror(errno));
     exit(EXIT_FAILURE);

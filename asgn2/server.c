@@ -40,6 +40,8 @@ void print_hdr(struct tcp_header * hdr) {
     log_info("\t[DEBUG] tcp header\n");
     log_info("\t[DEBUG] seq#: %u\n", hdr->seq);
     log_info("\t[DEBUG] datagram ack#: %u\n", hdr->ack);
+    log_info("\t[DEBUG] sender timestamp: %u\n", hdr->tsopt);
+    log_info("\t[DEBUG] receiver timestamp: %u\n", hdr->tsecr);
     if(hdr->flags & HDR_ACK) {
         log_info("\t[DEBUG] flagged with: ACK\n");
     }
@@ -101,9 +103,13 @@ void sig_child(int signo) {
 /*
  * make tcp header
  * */
-struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack, uint16_t flags, uint16_t window_sz) {
+struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack, 
+        uint32_t timestamp_sender, uint32_t timestamp_receiver,
+        uint16_t flags, uint16_t window_sz) {
     hdr->seq = seq;
     hdr->ack = ack;
+    hdr->tsopt = timestamp_sender;
+    hdr->tsecr = timestamp_receiver;
     hdr->flags = flags;
     hdr->window_size = window_sz;
 
@@ -111,6 +117,8 @@ struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack
 
     hdr->seq = htonl(seq);
     hdr->ack = htonl(ack);
+    hdr->tsopt = htonl(hdr->tsopt);
+    hdr->tsecr = htonl(hdr->tsecr);
     hdr->flags = htons(flags);
     hdr->window_size = htons(window_sz);
     return hdr;
@@ -137,6 +145,8 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
 
     hdr->ack = ntohl(hdr->ack); // network presentation to host
     hdr->seq = ntohl(hdr->seq);
+    hdr->tsopt = ntohl(hdr->tsopt);
+    hdr->tsecr = ntohl(hdr->tsecr);
     hdr->flags = ntohs(hdr->flags);
     hdr->window_size = ntohs(hdr->window_size);
     
@@ -179,6 +189,10 @@ int main(int argc, char * const *argv) {
 
     // active child info linked list, maintained by parent
     cur_pt = child_info_list = NULL;
+
+    // for RTT mechanism
+    struct rtt_info rtt;
+    rtt_init(&rtt);
 
     // get configuration
     printf("[CONFIG]\n");
@@ -429,6 +443,8 @@ int main(int argc, char * const *argv) {
                             make_hdr(&send_hdr,
                                 random(),
                                 recv_hdr.seq + 1,
+                                rtt_ts(&rtt),
+                                recv_hdr.tsopt,
                                 HDR_ACK | HDR_SYN,
                                 0),
                             &port_to_tell,
@@ -520,6 +536,8 @@ handshake_2nd:
                                 make_hdr(&send_hdr,
                                     recv_hdr.ack,
                                     recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
+                                    rtt_ts(&rtt),
+                                    recv_hdr.tsopt,
                                     0,
                                     0), /* TODO */
                                 file_buf,
@@ -530,8 +548,6 @@ handshake_2nd:
                         signal(SIGALRM, sig_alarm); // for retransmission of data parts
                         // set_no_rtt_time_out();
                         // use RTT mechanism
-                        struct rtt_info rtt;
-                        rtt_init(&rtt);
                         rtt_newpack(&rtt);
 file_trans_again:
                         if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
