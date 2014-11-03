@@ -11,9 +11,10 @@ ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
 	client_CFLAGS += -D_REENTRANT
 	client_LIBS += -lpthread
-	CFLAGS += -DBSD_COMP
+	CFLAGS += -DBSD_COMP -DRANDOM_MAX=2147483647
 else
 	client_CFLAGS += -pthread
+	CFLAGS += -DRANDOM_MAX=RAND_MAX
 endif
 
 all: $(OBJS) prifinfo_plus client server

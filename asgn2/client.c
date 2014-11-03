@@ -56,7 +56,7 @@ void *reader_thread(void *d) {
 		int ret;
 		double tmpf;
 		tmpi = random();
-		tmpf = (double)tmpi/(double)RAND_MAX;
+		tmpf = (double)tmpi/(double)RANDOM_MAX;
 		tmpf = -1*cfg.read_rate*log(tmpf);
 		clock_gettime(CLOCK_MONOTONIC, &start);
 		rt = start;
