@@ -51,26 +51,58 @@ c. During the 3-step handshake procedure, due to the insufficient timestamp info
 4. ARQ mechanism
 =============
 See server.c
-A sender sliding window with the maximum size of the number declared in server.in configuration file.
+
+A sender sliding window with the maximum size of the number declared in server.in
+configuration file.
+
 Using a loop array to implement such structure.
-Has a left-window-boundary, right-window-boundary and a sent-but-not-acked boundary, these 3 pointers with the structure.
+
+Has a left-window-boundary, right-window-boundary and a sent-but-not-acked boundary,
+these 3 pointers with the structure.
+
 The figure is like as below:
-                  |                         |                 |
-    left-boundary |     sent-no-ack-boundary|   right-boundary|
-  (sent and acked)|    (sent but not acked) |   (can be sent) |  (cannot be sent)
-Every time, sender sends all the datagrams in the (sent-no-ack, right-boundary], and the sent-no-ack boundary moves right
-When sender gets an ACK from receiver, the left-boundary moves right to the datagram denoted by ACK datagram's ack (which is the next datagram should be acked)
+
+                     |                       |                |
+      left-boundary  |  sent-no-ack-boundary | right-boundary |
+    (sent and acked) | (sent but not acked)  | (can be sent)  | (cannot be sent)
+
+Every time, sender sends all the datagrams in the (sent-no-ack, right-boundary],
+and the sent-no-ack boundary moves right
+
+When sender gets an ACK from receiver, the left-boundary moves right to the datagram
+denoted by ACK datagram's ack (which is the next datagram should be acked)
+
+On the client, there are also three boundaries:
+
+                            |                       |                        |
+             left boundary  |    next-seq boundary  |         right boundary |
+    (received but not read) | (next missing packet) | (largest seq received) |
+
+The available window size is whole_window_size - (next-seq - left).
+
+Every time a packet is read by the reader thread, left boundary is updated.
+
+Every time a packet is receive, the client will scan the area from next-seq boundary to right boundary,
+to see if there's a continuous range of packets received. If so, the client will update next-seq to the
+next missing packet. Then client will send an ACK to the server, with next-seq as its ack number.
+
 
 5. Other mechanism of adding reliability
 =====================================
 
 a. slow start:
-===========
+--------------
+
 See server.c
+
 add a congestion window, cwnd with init value:1
+
 every time a complete window has been sent by server and acknowledged by client
+
 the cwnd value would be doubled
-the real sender sliding window size would be the smaller one of (Maximum sender slding window size, receiver advertised sliding window size and congetsion window size)
+
+the real sender sliding window size would be the smaller one of (Maximum sender
+slding window size, receiver advertised sliding window size and congetsion window size)
 
 b. congestion avoidance:
 ---------------------
