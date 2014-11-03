@@ -83,7 +83,7 @@ static void chomp(char *inout){
 
 struct serv_conf {
     int port_num;
-    int sli_win_sz;
+    uint32_t sli_win_sz;
 };
 
 // active child info

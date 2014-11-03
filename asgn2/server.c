@@ -13,7 +13,7 @@ int read_serv_conf(struct serv_conf * conf) {
         my_err_quit("No such file \"server.in\"!\n");
     }
     fscanf(conf_file, " %d", &(conf->port_num));
-    fscanf(conf_file, " %d", &(conf->sli_win_sz));
+    fscanf(conf_file, " %u", &(conf->sli_win_sz));
     fclose(conf_file);
 
     return 0;
@@ -132,6 +132,9 @@ void make_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int pa
     memcpy(dgram, hdr, sizeof(struct tcp_header));
     memcpy(dgram + sizeof(struct tcp_header), payload, payload_size);
     *send_size = sizeof(struct tcp_header) + payload_size;
+
+    // printf("\t[DEBUG] Sending datagram size: %d\n", *send_size);
+    // printf("\t[DEBUG] Sending datagram data: %s\n", (char *)payload);
 }
 
 /*
@@ -159,9 +162,9 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
  * sliding window mechanism
  */
 struct sliding_window * sli_win;
-int sli_win_sz, window_start, window_end, sent_not_ack, adv_win_sz, avail_win_sz;
+uint32_t sli_win_sz, window_start, window_end, sent_not_ack, adv_win_sz, avail_win_sz;
 
-void build_window(int size) {
+void build_window(uint32_t size) {
     // sender available empty window size
     // receiver advertisez window size
     // current in use window size
@@ -540,7 +543,7 @@ handshake_2nd:
                     // sliding window mechanism
                     // update window size according to advertised client receiver window size
                     sli_win_sz = (config_serv.sli_win_sz < recv_hdr.window_size)?config_serv.sli_win_sz:recv_hdr.window_size;
-                    printf("[INFO] After receiver advertising, sender sliding window size: %d\n", sli_win_sz);
+                    printf("[INFO] After receiver advertising, sender sliding window size: %u\n", sli_win_sz);
 
                     FILE * data_file = fopen(filename, "r");
                     if(data_file == NULL) {
@@ -554,78 +557,72 @@ handshake_2nd:
                     printf("\n[INFO] Server child is going to send file \"%s\"!\n", filename);
                     signal(SIGALRM, sig_alarm); // for retransmission of data parts
 
+                    uint32_t last_client_seq = recv_hdr.seq;
+
                     while(1) {
 
                         if(read_size != 0) {
                             // load file content into window buffer
-                            int sli_window_index = sent_not_ack;
-                            /*if(read_size != 0) { // if no new data can be read, then no need to update window_end
-                              window_end = (window_start + sli_win_sz - 1) % config_serv.sli_win_sz;
-                              }*/
-                            /*if(window_start > window_end) {
-                                printf("[INFO] All data sent done! Sender stopped!\n");
-                                break;
-                            }*/
-                            int idx; 
+                            uint32_t sli_window_index = sent_not_ack;
+
+                            uint32_t idx; 
                             for(idx = 1; idx <= sli_win_sz; idx++) { // though obviously bigger than needed to be sent
-                                if(idx + ((sent_not_ack - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz) > sli_win_sz) {
-                                    printf("[DEBUG] current idx: %d\n", idx);
-                                    window_end = (sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz;
+                                if(idx + (sent_not_ack - window_start) > sli_win_sz) {
+                                    printf("[DEBUG] current idx: %u\n", idx);
+                                    window_end = sli_window_index - 1;
                                     break;
                                 }
                                 // the first time to read the file
                                 if(read_size == -1) {
-                                    sli_win[sli_window_index].seq = recv_hdr.ack;
+                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = recv_hdr.ack;
                                 }
                                 else {
                                     // last dgram seq + 1
-                                    sli_win[sli_window_index].seq = \
-                                                                    sli_win[(sli_window_index-1+config_serv.sli_win_sz)%config_serv.sli_win_sz].seq + 1;
+                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = \
+                                                                    sli_win[(sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz].seq + 1;
                                 }
-                                read_size = fread(sli_win[sli_window_index].data_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file);
-                                sli_win[sli_window_index].data_buf[read_size] = 0;
+                                read_size = fread(sli_win[sli_window_index % config_serv.sli_win_sz].data_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file);
+                                sli_win[sli_window_index % config_serv.sli_win_sz].data_buf[read_size] = 0;
                                 if(read_size == 0) {// ==0 means read to the end of file
-                                    window_end = (sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz;
-                                    printf("[INFO] Get to the end of data file! The last datagram seq would be #%d\n", sli_win[window_end].seq);
+                                    window_end = sli_window_index - 1;
+                                    printf("[INFO] Get to the end of data file! The last datagram seq would be #%d\n", sli_win[window_end % config_serv.sli_win_sz].seq);
                                     break;
                                 }
-                                sli_win[sli_window_index].data_sz = read_size;
+                                sli_win[sli_window_index % config_serv.sli_win_sz].data_sz = read_size;
                                 window_end = sli_window_index; // update window end
-                                sli_window_index = (sli_window_index + 1) % config_serv.sli_win_sz;
-                                rtt_init(&sli_win[sli_window_index].rtt);
+                                sli_window_index = sli_window_index + 1;
+                                rtt_init(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
                             }
                             sli_win_sz = (window_end - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz + 1;
                             avail_win_sz = config_serv.sli_win_sz - sli_win_sz; // subtract used win size
-                            printf("[DEBUG] window start: %d - sent not ack: %d - window end: %d, current sliding window size: %d\n", window_start, sent_not_ack, window_end, sli_win_sz);
+                            printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", window_start, sent_not_ack, window_end, sli_win_sz);
 
                             if(avail_win_sz == 0) {
                                 printf("[INFO] Sender sliding window is full!\n");
                             }
 
                             sli_window_index = sent_not_ack;
-                            int num = ((window_end - sent_not_ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) + 1;
-                            printf("\t[INFO] Sending window gonna send Datagram %d of seq [#%d - #%d]\n", num, sli_win[sent_not_ack].seq, sli_win[window_end].seq);
-                            while(num-- > 0) {
+                            // int num = ((window_end - sent_not_ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) + 1;
+                            int num = 1;
+                            printf("\t[INFO] Sending window gonna send %d Datagrams!\n", idx - num);
+                            while(num < idx) {
                                 // sent_size = sizeof(struct tcp_header) + read_size;
 
                                 // printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
+                                printf("[INFO] Sending window gonna send Datagram seq #%u\n", sli_win[sli_window_index % config_serv.sli_win_sz].seq);
                                 make_dgram(send_dgram,
                                         make_hdr(&send_hdr,
-                                            sli_win[sli_window_index].seq,
-                                            recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
-                                            rtt_ts(&sli_win[sli_window_index].rtt),
+                                            sli_win[sli_window_index % config_serv.sli_win_sz].seq,
+                                            last_client_seq, // as ack = seq + 1, only when responding to SYN or data payload
+                                            rtt_ts(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt),
                                             0, // recv_hdr.tsopt, no use of using the client timestamp
                                             0,
                                             avail_win_sz),
-                                        sli_win[sli_window_index].data_buf,
-                                        sli_win[sli_window_index].data_sz,
+                                        sli_win[sli_window_index % config_serv.sli_win_sz].data_buf,
+                                        sli_win[sli_window_index % config_serv.sli_win_sz].data_sz,
                                         &sent_size); /* TODO */ /* ARQ */
 
-                                printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
-                                printf("\t[DEBUG] Sent datagram data: %s\n", sli_win[sli_window_index].data_buf);
-                                printf("\t[DEBUG] Sent datagram seq: %d\n", sli_win[sli_window_index].seq);
-
-                                sli_window_index = (sli_window_index + 1) % config_serv.sli_win_sz;
+                                sli_window_index = sli_window_index + 1;
 
                                 if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                                 cli_addr, cli_len)) < 0) {
@@ -634,37 +631,38 @@ handshake_2nd:
 
                                 // use RTT mechanism
                                 // init RTT counter for every dgram
-                                rtt_newpack(&sli_win[sli_window_index].rtt);
+                                rtt_newpack(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
 
-                                alarm(rtt_start(&sli_win[sli_window_index].rtt));
+                                alarm(rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt));
+
+                                num++;
                             }
 
-                            sent_not_ack = (window_end + 1) % config_serv.sli_win_sz; // update status of dgram in sending window
+                            sent_not_ack = window_end + 1; // update status of dgram in sending window
                             // printf("[DEBUG] current sent not ack %d!\n", sent_not_ack);
 
                         }
 
                         if(sigsetjmp(jmpbuf, 1) != 0) {
-                            if(rtt_timeout(&sli_win[window_start].rtt) == 0) {
+                            if(rtt_timeout(&sli_win[window_start % config_serv.sli_win_sz].rtt) == 0) {
                                 // retransmit sent_not_ack data, from window_start
                                 if(retrans_flag == 1) { // retransmission should be enabled
                                     printf("\t[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start].seq);
                                     make_dgram(send_dgram,
                                             make_hdr(&send_hdr,
-                                                sli_win[window_start].seq,
+                                                sli_win[window_start % config_serv.sli_win_sz].seq,
                                                 recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
-                                                rtt_ts(&sli_win[window_start].rtt),
+                                                rtt_ts(&sli_win[window_start % config_serv.sli_win_sz].rtt),
                                                 0, // recv_hdr.tsopt, no use of using the client timestamp
                                                 0,
                                                 avail_win_sz),
-                                            sli_win[window_start].data_buf,
-                                            sli_win[window_start].data_sz,
+                                            sli_win[window_start % config_serv.sli_win_sz].data_buf,
+                                            sli_win[window_start % config_serv.sli_win_sz].data_sz,
                                             &sent_size);
-                                    printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                                 } else {
                                     printf("[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
                                 }
-                                alarm(rtt_start(&sli_win[window_start].rtt)); // set retransmission for newly retransmitted dgram
+                                alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
                             }
                             else {
                                 printf("[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
@@ -693,11 +691,13 @@ handshake_2nd:
                                 // if dup ack, then update window when ack is valid
                                 // window slide forward
                                 // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
-                                int move_forward = recv_hdr.ack - sli_win[window_start].seq;
-                                if(move_forward < 0) {
-                                    printf("Received dgram ack #%d is smaller than the \"sent but not ack-ed\" dgram seq #%d, ack dropped\n", recv_hdr.ack, sli_win[window_start].seq);
+                                int move_forward = recv_hdr.ack - sli_win[window_start % config_serv.sli_win_sz].seq;
+                                if(move_forward <= 0) {
+                                    printf("Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
                                     continue;
                                 }
+
+                                last_client_seq = recv_hdr.seq;
 
                                 printf("[DEBUG] move forward: %d\n", move_forward);
                                 int num;
@@ -705,7 +705,7 @@ handshake_2nd:
                                     alarm(0); // disable alarm for sent dgram
                                 }
 
-                                window_start = (window_start + move_forward) % config_serv.sli_win_sz;
+                                window_start = window_start + move_forward;
                                 avail_win_sz += move_forward;
                                 if(avail_win_sz > config_serv.sli_win_sz) {
                                     avail_win_sz = config_serv.sli_win_sz;
@@ -715,7 +715,7 @@ handshake_2nd:
                                 sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
                                              recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
-                                printf("[DEBUG] window start: %d - sent not ack: %d - window end: %d, current sliding window size: %d\n", window_start, sent_not_ack, window_end, sli_win_sz);
+                                printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", window_start, sent_not_ack, window_end, sli_win_sz);
 
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
@@ -727,8 +727,8 @@ handshake_2nd:
                                 if(recv_hdr.tsecr != 0) {
                                     num = window_start;
                                     while(num != sent_not_ack) {
-                                        rtt_stop(&sli_win[num].rtt, rtt_ts(&sli_win[num].rtt) - recv_hdr.tsecr); // update rtt after every received packet
-                                        num = (num + 1) % config_serv.sli_win_sz;
+                                        rtt_stop(&sli_win[num % config_serv.sli_win_sz].rtt, rtt_ts(&sli_win[num % config_serv.sli_win_sz].rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                                        num = num + 1;
                                     }
                                     //which has server sending timestamp
                                 }
@@ -736,7 +736,7 @@ handshake_2nd:
 
                         } while(recv_hdr.window_size == 0); // || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
-                        if(recv_hdr.ack == sli_win[window_end].seq + 1 && read_size == 0) {
+                        if(recv_hdr.ack == sli_win[window_end % config_serv.sli_win_sz].seq + 1 && read_size == 0) {
                             printf("[INFO] all data sent done!\n");
                             break;
                         }
