@@ -52,7 +52,8 @@ void *reader_thread(void *d) {
 	uint8_t dbuf[DATAGRAM_SIZE*10];
 	while(1) {
 		struct timespec start, rt, end;
-		int tmpi, ret;
+		long int tmpi;
+		int ret;
 		double tmpf;
 		tmpi = random();
 		tmpf = (double)tmpi/(double)RAND_MAX;
