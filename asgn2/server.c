@@ -540,6 +540,7 @@ handshake_2nd:
                     // sliding window mechanism
                     // update window size according to advertised client receiver window size
                     sli_win_sz = (config_serv.sli_win_sz < recv_hdr.window_size)?config_serv.sli_win_sz:recv_hdr.window_size;
+                    printf("[INFO] After receiver advertising, sender sliding window size: %d\n", sli_win_sz);
 
                     FILE * data_file = fopen(filename, "r");
                     if(data_file == NULL) {
@@ -552,6 +553,7 @@ handshake_2nd:
                     uint8_t retrans_flag = 1;
                     printf("\n[INFO] Server child is going to send file \"%s\"!\n", filename);
                     signal(SIGALRM, sig_alarm); // for retransmission of data parts
+
                     while(1) {
 
                         if(read_size != 0) {
@@ -560,14 +562,14 @@ handshake_2nd:
                             /*if(read_size != 0) { // if no new data can be read, then no need to update window_end
                               window_end = (window_start + sli_win_sz - 1) % config_serv.sli_win_sz;
                               }*/
-                            printf("[DEBUG] window start: %d - window end: %d\n", window_start, window_end);
-                            if(window_start > window_end) {
+                            /*if(window_start > window_end) {
                                 printf("[INFO] All data sent done! Sender stopped!\n");
                                 break;
-                            }
+                            }*/
                             int idx; 
                             for(idx = 1; idx <= sli_win_sz; idx++) { // though obviously bigger than needed to be sent
                                 if(idx + ((sent_not_ack - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz) > sli_win_sz) {
+                                    printf("[DEBUG] current idx: %d\n", idx);
                                     window_end = (sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz;
                                     break;
                                 }
@@ -588,12 +590,15 @@ handshake_2nd:
                                     break;
                                 }
                                 sli_win[sli_window_index].data_sz = read_size;
+                                window_end = sli_window_index; // update window end
                                 sli_window_index = (sli_window_index + 1) % config_serv.sli_win_sz;
                                 rtt_init(&sli_win[sli_window_index].rtt);
                             }
                             sli_win_sz = (window_end - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz + 1;
-                            avail_win_sz -= sli_win_sz; // subtract used win size
+                            avail_win_sz = config_serv.sli_win_sz - sli_win_sz; // subtract used win size
+                            printf("[DEBUG] window start: %d - sent not ack: %d - window end: %d, current sliding window size: %d\n", window_start, sent_not_ack, window_end, sli_win_sz);
 
+                            printf("!!!!\n");
                             if(avail_win_sz == 0) {
                                 printf("[INFO] Sender sliding window is full!\n");
                             }
@@ -619,6 +624,7 @@ handshake_2nd:
 
                                 printf("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                                 printf("\t[DEBUG] Sent datagram data: %s\n", sli_win[sli_window_index].data_buf);
+                                printf("\t[DEBUG] Sent datagram seq: %d\n", sli_win[sli_window_index].seq);
 
                                 sli_window_index = (sli_window_index + 1) % config_serv.sli_win_sz;
 
@@ -634,7 +640,8 @@ handshake_2nd:
                                 alarm(rtt_start(&sli_win[sli_window_index].rtt));
                             }
 
-                            sent_not_ack = window_end + 1; // update status of dgram in sending window
+                            sent_not_ack = (window_end + 1) % config_serv.sli_win_sz; // update status of dgram in sending window
+                            printf("[DEBUG] current sent not ack %d!\n", sent_not_ack);
 
                         }
 
@@ -675,24 +682,6 @@ handshake_2nd:
                             parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
                             printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
-                            // window slide forward
-                            // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
-                            int move_foward = recv_hdr.ack - sli_win[window_start].seq;
-
-                            int num;
-                            for(num = 0; num < move_foward; num++) {
-                                alarm(0); // disable alarm for sent dgram
-                            }
-
-                            window_start = (window_start + move_foward) % config_serv.sli_win_sz;
-                            avail_win_sz += move_foward;
-                            if(avail_win_sz > config_serv.sli_win_sz) {
-                                avail_win_sz = config_serv.sli_win_sz;
-                            }
-
-                            sli_win_sz -= move_foward;
-                            sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
-                                         recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
                             if(recv_hdr.window_size == 0) {
                                 printf("\t[ERROR] Receiver sliding window is full! ACK dropped! Waiting for window updates!\n");
@@ -702,30 +691,53 @@ handshake_2nd:
                                     retrans_flag = 0;
                                 }
                             } else { // should enable retransmission
+                                // if dup ack, then update window when ack is valid
+                                // window slide forward
+                                // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
+                                int move_forward = recv_hdr.ack - sli_win[window_start].seq;
+
+                                printf("[DEBUG] move forward: %d\n", move_forward);
+                                int num;
+                                for(num = 0; num < move_forward; num++) {
+                                    alarm(0); // disable alarm for sent dgram
+                                }
+
+                                window_start = (window_start + move_forward) % config_serv.sli_win_sz;
+                                avail_win_sz += move_forward;
+                                if(avail_win_sz > config_serv.sli_win_sz) {
+                                    avail_win_sz = config_serv.sli_win_sz;
+                                }
+
+                                sli_win_sz -= move_forward;
+                                sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
+                                             recv_hdr.window_size : sli_win_sz + avail_win_sz;
+
+                                printf("[DEBUG] window start: %d - sent not ack: %d - window end: %d, current sliding window size: %d\n", window_start, sent_not_ack, window_end, sli_win_sz);
+
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
                                     // alarm(no_rtt_time_out);
                                     printf("\t[INFO] Receiver sliding window is open now! Enable retransmission!\n");
                                     // alarm(rtt_start(&rtt));
                                 }
-                                /*if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                                    // printf("\t[INFO] Part #%d of file %s correctly sent!\n", seq_num, filename);
-                                } else {
-                                    printf("\tWrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
-                                }*/
+
+                                if(recv_hdr.tsecr != 0) {
+                                    num = window_start;
+                                    while(num != sent_not_ack) {
+                                        rtt_stop(&sli_win[num].rtt, rtt_ts(&sli_win[num].rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                                        num = (num + 1) % config_serv.sli_win_sz;
+                                    }
+                                    //which has server sending timestamp
+                                }
                             }
 
-                            if(recv_hdr.tsecr != 0) { // fake
-                                num = window_start;
-                                while(num != sent_not_ack) {
-                                    rtt_stop(&sli_win[num].rtt, rtt_ts(&sli_win[num].rtt) - recv_hdr.tsecr); // update rtt after every received packet
-                                    num = (num + 1) % config_serv.sli_win_sz;
-                                }
-                                //which has server sending timestamp
-                            }
                         } while(recv_hdr.window_size == 0); // || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
-                        printf("-----------------\n");
+                        if(recv_hdr.ack == sli_win[window_end].seq + 1 && read_size == 0) {
+                            printf("[INFO] all data sent done!\n");
+                            break;
+                        }
+
                     }
 
                     printf("\n[INFO] File %s sent complete!\n", filename);
