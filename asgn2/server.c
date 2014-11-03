@@ -657,6 +657,12 @@ handshake_2nd:
                                             sli_win[window_start % config_serv.sli_win_sz].data_buf,
                                             sli_win[window_start % config_serv.sli_win_sz].data_sz,
                                             &sent_size);
+
+                                    if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
+                                                    cli_addr, cli_len)) < 0) {
+                                        my_err_quit("sendto error");
+                                    }
+
                                 } else {
                                     printf("[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
                                 }
