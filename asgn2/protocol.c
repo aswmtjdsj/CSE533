@@ -91,10 +91,30 @@ static void protocol_last_ack(void *ml, void *data, int rw) {
 		p->ccb(p, 1);
 	}
 }
+static void
+protocol_noactivity(void *ml, void *data, const struct timeval *elapse) {
+	double e = elapse->tv_sec + (double)elapse->tv_usec/1e6;
+	struct protocol *p = data;
+	uint16_t win;
+	pthread_mutex_lock(&p->window_lock);
+	win = protocol_available_window(p);
+	pthread_mutex_unlock(&p->window_lock);
+	log_info("Connection went silent for %lf seconds, and there is window"
+	    " available (%u), resending ACK\n", e, win);
+	uint8_t s[HDR_SIZE];
+	make_header(p->syn_ack, p->eseq, HDR_ACK, win, 0, s);
+	p->send(p->fd, s, HDR_SIZE, p->send_flags);
+
+	struct timeval tv;
+	tv.tv_sec = elapse->tv_sec;
+	tv.tv_usec = 0;
+	p->timeout = timer_insert(p->ml, &tv, protocol_noactivity, p);
+}
 static void protocol_data_callback(void *ml, void *data, int rw) {
 	/* It's still possible to receive SYN-ACK here.
 	 * And we need to re-transmit ACK if we do */
 	struct protocol *p = data;
+	struct timeval tv;
 	uint8_t buf[DATAGRAM_SIZE], s[DATAGRAM_SIZE];
 	uint16_t owsz = protocol_available_window(p);
 	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
@@ -104,6 +124,12 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 			log_warning("recv() failed: %s\n", strerror(errno));
 		return;
 	}
+
+	//Received packet, reset noactivity timer
+	timer_remove(p->ml, p->timeout);
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+	timer_insert(p->ml, &tv, protocol_noactivity, p);
 
 	if (ret < DATAGRAM_SIZE)
 		log_info("Short packet: %zd bytes\n", ret);
@@ -173,7 +199,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		}
 		if (p->tseq <= hdr->seq) {
 			log_warning("Client sent a packet that does not fit "
-			    "into our window, discarded, and resend ACK\n");
+			    "into our window, discard, and resend ACK\n");
 			make_header(hdr->ack, p->eseq, HDR_ACK, owsz,
 			    hdr->tsopt, s);
 			p->send(p->fd, s, sizeof(*hdr), p->send_flags);
@@ -188,12 +214,12 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	while(p->window[p->e].present && p->e != p->t) {
 		p->e = (p->e+1)%(p->window_size+1);
 		p->eseq++;
-		log_debug("%d\n", p->e);
 	}
 	pthread_mutex_lock(&p->window_lock);
 	owsz = protocol_available_window(p);
 	make_header(hdr->ack, p->eseq, HDR_ACK, owsz, hdr->tsopt, s);
 	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+	log_info("Sent ACK, with ack number = %u\n", p->eseq);
 
 	if (owsz <= 0)
 		log_info("Window is full\n");
@@ -275,6 +301,11 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	p->state = ESTABLISHED;
 	fd_set_cb(p->fh, protocol_data_callback);
 	log_debug("ACK sent\n");
+
+	struct timeval tv;
+	tv.tv_usec = 0;
+	tv.tv_sec = 5;
+	p->timeout = timer_insert(p->ml, &tv, protocol_noactivity, p);
 
 	p->ccb(p, 0);
 }

@@ -96,10 +96,10 @@ nsleep:
 			tc += count;
 			tb += ret;
 			dbuf[ret] = 0;
-			log_info("[DATA] %s", dbuf);
+			log_info("[DATA] %s\n", dbuf);
 		}
-		//log_info("[reader_thread] read %d datagrams "
-		//    "(%d bytes) in total.\n", tc, tb);
+		log_info("[reader_thread] read %d datagrams "
+		    "(%d bytes) in total.\n", tc, tb);
 	}
 	return NULL;
 }
