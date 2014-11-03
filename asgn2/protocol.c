@@ -314,19 +314,26 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 }
 
 struct protocol *
-protocol_connect(void *ml, struct sockaddr *saddr, int send_flags,
-		 const char *filename, int recv_win, send_func sendf,
-		 recv_func recvf,  connect_cb cb) {
+protocol_connect(void *ml, struct sockaddr *saddr, socklen_t saddr_len,
+		 struct sockaddr *laddr, socklen_t laddr_len,
+		 int send_flags, const char *filename, int recv_win,
+		 send_func sendf, recv_func recvf,  connect_cb cb) {
 	struct protocol *p = protocol_new(ml);
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int myflags = 0;
 	p->fd = sockfd;
 
-	int ret = connect(sockfd, (struct sockaddr *)saddr, sizeof(*saddr));
+	int ret = bind(sockfd, laddr, laddr_len);
+	if (ret < 0) {
+		log_warning("Failed to bind: %s\n", strerror(errno));
+		return NULL;
+	}
+	ret = connect(sockfd, saddr, saddr_len);
 	if (ret < 0) {
 		log_warning("Failed to connect: %s\n", strerror(errno));
 		return NULL;
 	}
+
 
 	ret = fcntl(sockfd, F_SETFL, O_NONBLOCK|O_RDWR);
 	if (ret < 0) {

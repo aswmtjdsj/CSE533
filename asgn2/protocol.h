@@ -67,9 +67,10 @@ CASSERT(HDR_SIZE != 20, tcp_header_size);
 void protocol_destroy(struct protocol *);
 
 struct protocol *
-protocol_connect(void *ml, struct sockaddr *saddr, int flags,
-		 const char *filename, int recv_win, send_func sender,
-		 recv_func recvf, connect_cb cb);
+protocol_connect(void *ml, struct sockaddr *saddr, socklen_t saddr_len,
+		 struct sockaddr *laddr, socklen_t laddr_len,
+		 int flags, const char *filename, int recv_win,
+		 send_func sender, recv_func recvf, connect_cb cb);
 
 ssize_t protocol_read(struct protocol *p, uint8_t *buf, int *ndgram);
 

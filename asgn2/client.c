@@ -176,23 +176,46 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
+	log_info("Interface info:\n");
+	dump_ifi_info(AF_INET, 1);
 	struct sockaddr_in saddr;
+	struct sockaddr_in laddr;
 	int flags = 0, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;
-	ret = islocal_addr(&saddr, NULL);
+	ret = islocal_addr(&saddr, &laddr);
 	if (ret == 2) {
 		log_info("Server address is same machine\n");
+		log_info("\tUse server ip: 127.0.0.1\n");
+		log_info("\tUse client ip: 127.0.0.1\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);
+		inet_pton(AF_INET, "127.0.0.1", &laddr.sin_addr);
 		flags = MSG_DONTROUTE;
 	} else if (ret == 1) {
+		char *iptmp = NULL;
+		size_t len = 0;
 		log_info("Server address is in local network\n");
+		log_info("\tUse server ip: %s\n",
+		    sa_ntop((struct sockaddr *)&saddr, &iptmp, &len));
+		log_info("\tUse client ip: %s\n",
+		    sa_ntop((struct sockaddr *)&laddr, &iptmp, &len));
 		flags = MSG_DONTROUTE;
+	} else {
+		char *iptmp = NULL;
+		size_t len = 0;
+		log_info("Server address is no local\n");
+		get_nonloopback_addr(&laddr);
+		log_info("\tUse server ip: %s\n",
+		    sa_ntop((struct sockaddr *)&saddr, &iptmp, &len));
+		log_info("\tUse client ip: %s\n",
+		    sa_ntop((struct sockaddr *)&laddr, &iptmp, &len));
 	}
 
 	void *ml = mainloop_new();
-	protocol_connect(ml, (struct sockaddr *)&saddr,
+	protocol_connect(ml,
+	    (struct sockaddr *)&saddr, sizeof(saddr),
+	    (struct sockaddr *)&laddr, sizeof(laddr),
 	    flags, cfg.filename, cfg.recv_win, prob_send, prob_recv,
 	    connect_callback);
 
