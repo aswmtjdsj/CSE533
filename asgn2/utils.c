@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <assert.h>
+#include <unistd.h>
 #include "utils.h"
 
 /* We can reuse a single socket fd */
