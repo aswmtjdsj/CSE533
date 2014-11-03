@@ -378,23 +378,23 @@ void dump_ifi_info(int family, int doaliases) {
 		log_info("\b>\n");
 
 		if (ifi->ifi_mtu != 0)
-			log_info("  MTU: %d\n", ifi->ifi_mtu);
+			log_info("\tMTU: %d\n", ifi->ifi_mtu);
 
 		char *tmp = NULL;
 		size_t len = 0;
 		struct sockaddr *sa;
 		if ((sa = ifi->ifi_addr) != NULL)
-			log_info("  IP addr: %s\n", sa_ntop(sa, &tmp, &len));
+			log_info("\tIP addr: %s\n", sa_ntop(sa, &tmp, &len));
 
 		if ((sa = ifi->ifi_ntmaddr) != NULL)
-			log_info("  network mask: %s\n",
+			log_info("\tnetwork mask: %s\n",
 			    sa_ntop(sa, &tmp, &len));
 
 		if ((sa = ifi->ifi_brdaddr) != NULL)
-			log_info("  broadcast addr: %s\n",
+			log_info("\tbroadcast addr: %s\n",
 			    sa_ntop(sa, &tmp, &len));
 		if ((sa = ifi->ifi_dstaddr) != NULL)
-			log_info("  destination addr: %s\n",
+			log_info("\tdestination addr: %s\n",
 			    sa_ntop(sa, &tmp, &len));
 	}
 	free_ifi_info(ifihead);

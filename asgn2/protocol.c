@@ -218,7 +218,6 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 			log_warning("recv() failed: %s\n", strerror(errno));
 		return;
 	}
-	protocol_print(buf, "xxx\t", 1);
 	struct tcp_header *hdr = (void *)buf;
 	hdr->window_size = ntohs(hdr->window_size);
 	hdr->ack = ntohl(hdr->ack);
@@ -321,13 +320,17 @@ protocol_connect(void *ml, struct sockaddr *saddr, socklen_t saddr_len,
 	struct protocol *p = protocol_new(ml);
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int myflags = 0;
+	int ret;
 	p->fd = sockfd;
 
-	int ret = bind(sockfd, laddr, laddr_len);
-	if (ret < 0) {
-		log_warning("Failed to bind: %s\n", strerror(errno));
-		return NULL;
+	if (laddr) {
+		ret = bind(sockfd, laddr, laddr_len);
+		if (ret < 0) {
+			log_warning("Failed to bind: %s\n", strerror(errno));
+			return NULL;
+		}
 	}
+
 	ret = connect(sockfd, saddr, saddr_len);
 	if (ret < 0) {
 		log_warning("Failed to connect: %s\n", strerror(errno));

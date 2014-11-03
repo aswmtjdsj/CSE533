@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <math.h>
+#include <unistd.h>
 #include "protocol.h"
 #include "mainloop.h"
 #include "utils.h"
@@ -22,11 +23,10 @@ static struct cfg {
 static pthread_t reader;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
-	protocol_print(buf, "\t", 1);
 	int tmp = rand_r(&cfg.seed);
 	if (tmp <= cfg.drop_rate*RAND_MAX) {
 		log_info("\n[send] Following packet dropped: \n");
-		protocol_print(buf, "sss\t", 1);
+		protocol_print(buf, "\t", 1);
 		return 0;
 	}
 	return send(fd, buf, len, flags);
@@ -35,7 +35,6 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 	while(1) {
 		int ret = recv(fd, buf, len, flags);
 		int tmp;
-		protocol_print(buf, "rrr\t", 1);
 		tmp = rand_r(&cfg.seed);
 		if (ret < 0) {
 			if (errno == EAGAIN)
@@ -180,7 +179,10 @@ int main(int argc, char * const *argv) {
 	dump_ifi_info(AF_INET, 1);
 	struct sockaddr_in saddr;
 	struct sockaddr_in laddr;
+	struct sockaddr *laddrp = (struct sockaddr *)&laddr;
 	int flags = 0, ret;
+	char *iptmp = NULL;
+	size_t len = 0;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;
@@ -193,8 +195,6 @@ int main(int argc, char * const *argv) {
 		inet_pton(AF_INET, "127.0.0.1", &laddr.sin_addr);
 		flags = MSG_DONTROUTE;
 	} else if (ret == 1) {
-		char *iptmp = NULL;
-		size_t len = 0;
 		log_info("Server address is in local network\n");
 		log_info("\tUse server ip: %s\n",
 		    sa_ntop((struct sockaddr *)&saddr, &iptmp, &len));
@@ -202,10 +202,24 @@ int main(int argc, char * const *argv) {
 		    sa_ntop((struct sockaddr *)&laddr, &iptmp, &len));
 		flags = MSG_DONTROUTE;
 	} else {
-		char *iptmp = NULL;
-		size_t len = 0;
+		socklen_t llen;
+		int tmpfd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (tmpfd < 0) {
+			log_warning("Failed to create socket, %s\n",
+			    strerror(errno));
+			return 1;
+		}
+		ret = connect(tmpfd, (struct sockaddr *)&saddr, sizeof(saddr));
+		if (ret < 0) {
+			log_warning("Failed to create socket, %s\n",
+			    strerror(errno));
+			return 1;
+		}
+
+		getsockname(tmpfd, (struct sockaddr *)&laddr, &llen);
+		laddrp = NULL;
+		close(tmpfd);
 		log_info("Server address is no local\n");
-		get_nonloopback_addr(&laddr);
 		log_info("\tUse server ip: %s\n",
 		    sa_ntop((struct sockaddr *)&saddr, &iptmp, &len));
 		log_info("\tUse client ip: %s\n",
@@ -215,9 +229,8 @@ int main(int argc, char * const *argv) {
 	void *ml = mainloop_new();
 	protocol_connect(ml,
 	    (struct sockaddr *)&saddr, sizeof(saddr),
-	    (struct sockaddr *)&laddr, sizeof(laddr),
-	    flags, cfg.filename, cfg.recv_win, prob_send, prob_recv,
-	    connect_callback);
+	    laddrp, sizeof(laddr), flags, cfg.filename, cfg.recv_win,
+	    prob_send, prob_recv, connect_callback);
 
 	mainloop_run(ml);
 	free(ml);
