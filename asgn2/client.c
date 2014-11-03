@@ -183,7 +183,7 @@ int main(int argc, char * const *argv) {
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;
-	ret = islocal_addr(&saddr);
+	ret = islocal_addr(&saddr, NULL);
 	if (ret == 2) {
 		log_info("Server address is same machine\n");
 		inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr);

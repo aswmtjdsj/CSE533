@@ -227,7 +227,7 @@ check_address(struct sock_info_aux * host_addr,
 	return FLAG_NON_LOCAL;
 }
 
-int islocal_addr(struct sockaddr_in *saddr) {
+int islocal_addr(struct sockaddr_in *saddr, struct sockaddr_in *proof) {
 	struct ifi_info *head = get_ifi_info(AF_INET, 1), *iter;
 	int ret = 0;
 	iter = head;
