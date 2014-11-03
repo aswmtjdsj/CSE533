@@ -45,6 +45,8 @@ keypoint:
     which means each datagram has its own timeout timer
 * after receiving each valid ACK from client, server will update RTO of several datagrams,
     which are in the sender sliding window, sent but not acked.
+c. During the 3-step handshake procedure, due to the insufficient timestamp information,
+    we apply a simple timeout mechanism, which repetively try from 3 seconds timeout to 12 seconds
 
 ARQ mechanism
 =============

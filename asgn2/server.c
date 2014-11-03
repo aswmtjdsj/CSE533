@@ -20,9 +20,8 @@ int read_serv_conf(struct serv_conf * conf) {
 }
 
 void print_serv_conf(const struct serv_conf * config) {
-    printf("Server Configuration from server.in:\n");
-    printf("{\"Well-known port number\": %d, \"Sender sliding-window size(in datagram units)\": %d}\n", config->port_num, config->sli_win_sz);
-    printf("\n");
+    printf("\n[INFO] Server Configuration from server.in:\n");
+    printf("\t{\"Well-known port number\": %d, \"Sender sliding-window size(in datagram units)\": %d}\n", config->port_num, config->sli_win_sz);
 }
 
 void print_ifi_flags(struct ifi_info * ifi) {
@@ -36,18 +35,18 @@ void print_ifi_flags(struct ifi_info * ifi) {
 }
 
 void print_hdr(struct tcp_header * hdr) {
-    log_info("\t[DEBUG] tcp header");
+    printf("\t[DEBUG] tcp header <");
     if(hdr->flags & HDR_ACK) {
-        log_info(" ACK");
+        printf(" ACK");
     }
     if(hdr->flags & HDR_SYN) {
-        log_info(" SYN");
+        printf(" SYN");
     }
     if(hdr->flags & HDR_FIN) {
-        log_info(" FIN");
+        printf(" FIN");
     }
-    log_info("\n");
-    log_info("\t{\"seq#\": %u, \"datagram ack#\": %u, \"sender timestamp\": %u, \"receiver timestamp\": %u, \"window size\": %u} \n", \
+    printf(" >\n");
+    printf("\t\t{\"seq#\": %u, \"datagram ack#\": %u, \"sender timestamp\": %u, \"receiver timestamp\": %u, \"window size\": %u} \n", \
             hdr->seq, hdr->ack, hdr->tsopt, hdr->tsecr, hdr->window_size);
 }
 
@@ -97,7 +96,7 @@ void sig_child(int signo) {
         temp_pt = temp_pt->next;
     }
 
-    printf("[parent] child process %u terminated\n", (uint32_t)pid);
+    printf("[INFO][parent] child process %u terminated\n", (uint32_t)pid);
 }
 
 /*
@@ -113,7 +112,7 @@ struct tcp_header * make_hdr(struct tcp_header * hdr, uint32_t seq, uint32_t ack
     hdr->flags = flags;
     hdr->window_size = window_sz;
 
-    printf("\t[DEBUG] Dgram to be sent!\n");
+    printf("\n\t[INFO] Datagram to be sent!\n");
     print_hdr(hdr);
 
     hdr->seq = htonl(seq);
@@ -133,8 +132,8 @@ void make_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int pa
     memcpy(dgram + sizeof(struct tcp_header), payload, payload_size);
     *send_size = sizeof(struct tcp_header) + payload_size;
 
-    // printf("\t[DEBUG] Sending datagram size: %d\n", *send_size);
-    // printf("\t[DEBUG] Sending datagram data: %s\n", (char *)payload);
+    printf("\t[INFO] Sending datagram size: %d\n", *send_size);
+    printf("\t[INFO] Sending datagram data: (not shown)\n");//, (char *)payload);
 }
 
 /*
@@ -154,8 +153,9 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
     hdr->flags = ntohs(hdr->flags);
     hdr->window_size = ntohs(hdr->window_size);
     
-    printf("\t[DEBUG] Dgram received!\n");
+    printf("\n\t[INFO] Dgram received!\n");
     print_hdr(hdr);
+    printf("\t[INFO] Received datagram size: %d\n", recv_size);
 }
 
 /*
@@ -232,20 +232,19 @@ int main(int argc, char * const *argv) {
     cwnd = 1;
 
     // get configuration
-    printf("[CONFIG]\n");
     read_serv_conf(&config_serv);
     print_serv_conf(&config_serv);
     build_window(config_serv.sli_win_sz);
 
     // IFI INFO
-    printf("[IFI] Info of %s:\n", "Server");
+    printf("\n[INFO] IFI Info of %s:\n", "Server");
     for( ifihead = ifi = get_ifi_info(AF_INET, 1); ifi != NULL; ifi = ifi->ifi_next) {
         // Interface
         printf("%s: ", ifi->ifi_name);
         if (ifi->ifi_index != 0) printf("(%d) ", ifi->ifi_index);
         print_ifi_flags(ifi);
-        if (ifi->ifi_mtu != 0) printf("  MTU: %d\n", ifi->ifi_mtu);
-        if ((ip_addr = ifi->ifi_addr) != NULL) printf("  IP address: %s\n", sa_ntop(ip_addr, &tmp_str, &addr_len)); 
+        if (ifi->ifi_mtu != 0) printf("\tMTU: %d\n", ifi->ifi_mtu);
+        if ((ip_addr = ifi->ifi_addr) != NULL) printf("\tIP address: %s\n", sa_ntop(ip_addr, &tmp_str, &addr_len)); 
 
         /* for interface array */
         // set server address
@@ -272,7 +271,7 @@ int main(int argc, char * const *argv) {
         }
 
         // get interface netmask
-        if ((net_mask = ifi->ifi_ntmaddr) != NULL) printf("  network mask: %s\n", sa_ntop(net_mask, &tmp_str, &addr_len)); 
+        if ((net_mask = ifi->ifi_ntmaddr) != NULL) printf("\tnetwork mask: %s\n", sa_ntop(net_mask, &tmp_str, &addr_len)); 
 
         // set interface netmask
         sock_data_info[inter_index].net_mask = malloc(sizeof(struct sockaddr));
@@ -285,30 +284,28 @@ int main(int argc, char * const *argv) {
         memcpy(sub_net, net_mask, sizeof(struct sockaddr));
         ((struct sockaddr_in *)sub_net)->sin_addr.s_addr = ((struct sockaddr_in *)ip_addr)->sin_addr.s_addr & ((struct sockaddr_in *)net_mask)->sin_addr.s_addr;
         memcpy(sock_data_info[inter_index].subn_addr, sub_net, sizeof(struct sockaddr));
-        log_debug("  [DEBUG] sub net: %s\n", sa_ntop(sub_net, &tmp_str, &addr_len));
+        log_debug("\t[DEBUG] sub net: %s\n", sa_ntop(sub_net, &tmp_str, &addr_len));
 
         // broadcast address
-        if ((br_addr = ifi->ifi_brdaddr) != NULL) printf("  broadcast address: %s\n", sa_ntop(br_addr, &tmp_str, &addr_len)); 
+        if ((br_addr = ifi->ifi_brdaddr) != NULL) printf("\tbroadcast address: %s\n", sa_ntop(br_addr, &tmp_str, &addr_len)); 
 
         // destination address
-        if ((dst_addr = ifi->ifi_dstaddr) != NULL) printf("  destination address: %s\n", sa_ntop(dst_addr, &tmp_str, &addr_len)); 
-
-        printf("\n");
+        if ((dst_addr = ifi->ifi_dstaddr) != NULL) printf("\tdestination address: %s\n", sa_ntop(dst_addr, &tmp_str, &addr_len)); 
         inter_index++; 
     }
 
     free_ifi_info(ifihead);
 
     // info for interface array
-    printf("Bound interfaces>\n");
+    printf("\n[INFO] Bound interfaces>\n");
     for(iter = 0; iter < inter_index; iter++) {
-        printf("Interface #%d:\n", iter);
-        log_info("\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
-        printf("\tIP Address: %s\n", sa_ntop(sock_data_info[iter].ip_addr, &tmp_str, &addr_len));
+        printf("\n\tInterface #%d:\n", iter);
+        log_debug("\t\t(DEBUG) sock_fd: %d\n", sock_data_info[iter].sock_fd);
+        printf("\t\tIP Address: %s\n", sa_ntop(sock_data_info[iter].ip_addr, &tmp_str, &addr_len));
         // take care of different annotation of network and host, (ntohs, htons)
-        printf("\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port));
-        printf("\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
-        printf("\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
+        printf("\t\tPort Number: %d\n", ntohs(((struct sockaddr_in *)sock_data_info[iter].ip_addr)->sin_port));
+        printf("\t\tNetwork Mask: %s\n", sa_ntop(sock_data_info[iter].net_mask, &tmp_str, &addr_len));
+        printf("\t\tSubnet Address: %s\n", sa_ntop(sock_data_info[iter].subn_addr, &tmp_str, &addr_len));
     }
 
     // use select for incoming connection
@@ -337,10 +334,10 @@ int main(int argc, char * const *argv) {
     for( ; ; ) {
         printf("\n[INFO] Expecting upcoming datagram...\n");
         if(child_info_list != NULL) {
-            printf("[INFO] Current active children:\n");
+            printf("\tCurrent active children:\n");
             struct child_info * temp_pt = child_info_list;
             for( ; temp_pt != NULL;) {
-                printf("\t child #%u with initial SYN #%u\n", (uint32_t)temp_pt->pid, temp_pt->syn_init);
+                printf("\t\tchild #%u with initial SYN #%u\n", (uint32_t)temp_pt->pid, temp_pt->syn_init);
                 temp_pt = temp_pt->next;
             }
         }
@@ -375,7 +372,7 @@ int main(int argc, char * const *argv) {
                 char filename[DATAGRAM_SIZE];
 
                 parse_dgram(recv_dgram, &recv_hdr, filename, recv_size);
-                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+                // log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
                 filename[recv_size - sizeof(struct tcp_header)] = 0; // with no padding
                 // I should terminate the string by myself
 
@@ -398,7 +395,7 @@ int main(int argc, char * const *argv) {
                     break;
                 }
 
-                printf("\nSuccessfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
+                printf("\n[INFO] Successfully connected from client with IP address: %s\n", sa_ntop(cli_addr, &tmp_str, &cli_len));
                 printf("\tWith port #: %d\n", ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
                 printf("\tRequested filename: %s\n\n", filename);
 
@@ -427,9 +424,8 @@ int main(int argc, char * const *argv) {
                         exit(1);
                     }
 
-                    printf("[INFO] Server: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
-                    printf("[INFO] Client: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
-                    printf("\n");
+                    printf("\tServer: %s:%d\n", sa_ntop(chi_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
+                    printf("\tClient: %s:%d\n", sa_ntop(cli_addr, &tmp_str, &addr_len), ntohs(((struct sockaddr_in *)cli_addr)->sin_port));
 
                     // Now child has its derived listening socket still open
                     // Time to create connection socket and bind it
@@ -457,10 +453,9 @@ int main(int argc, char * const *argv) {
                         my_err_quit("getsockname error");
                     }
 
-                    printf("[INFO] After binding the connection socket to the Server ip address by the child>\n");
+                    printf("\n[INFO] After binding the connection socket to the Server ip address by the child>\n");
                     printf("\tServer IP: %s\n", sa_ntop(chi_addr, &tmp_str, &addr_len));
                     printf("\tServer port: %d\n", ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
-                    printf("\n");
                             
                     // should not treat the retransmitted SYN as the new incoming dgram
                     // connect the client via connection socket
@@ -472,8 +467,8 @@ int main(int argc, char * const *argv) {
                     uint16_t port_to_tell = ((struct sockaddr_in *)chi_addr)->sin_port;
                     sent_size = sizeof(struct tcp_header) + sizeof(uint16_t);
 
-                    printf("[INFO] Server child is sending the port of newly created connection socket back to the client>\n");
-                    printf("\t[INFO]port for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
+                    printf("\n[INFO] Server child is sending the port of newly created connection socket back to the client>\n");
+                    printf("\tport for server conn socket #: %d (to be sent to client)\n", ntohs(port_to_tell));
 
                     make_dgram(send_dgram, 
                             make_hdr(&send_hdr,
@@ -486,7 +481,7 @@ int main(int argc, char * const *argv) {
                             &port_to_tell,
                             sizeof(uint16_t),
                             &sent_size);
-                    log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                    // log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                     // no ARQ needed here
 
                     signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
@@ -507,12 +502,12 @@ handshake_2nd:
                     alarm(no_rtt_time_out);
                     if(sigsetjmp(jmpbuf, 1) != 0) {
                         if(no_rtt_time_out < no_rtt_max_time_out) {
-                            printf("Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
+                            printf("\n[INFO] Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
                             no_rtt_time_out += 1;
                             goto handshake_2nd;
                         }
                         else {
-                            printf("Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                            printf("\n[INFO] Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
                             exit(1);
                         }
                     }
@@ -529,16 +524,17 @@ handshake_2nd:
                             my_err_quit("recvfrom error");
                         }
 
-                        printf("\n[INFO] It supposed to be the 3rd handshake while connection socket received a datagram from client>\n");
+                        printf("\n[INFO] Received a datagram from client, supposed to be the 3rd handshake>\n");
                         parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
-                        log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+                        // log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
                         // print_dgram("Received", &recv_hdr);
                         if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
-                            printf("\t[INFO] 3rd handshake succeeded! Listening socket of server child gonna close!\n");
+                            printf("\t[INFO] 3rd handshake succeeded!\n");
+                            printf("\t[INFO] Listening socket of server child gonna close!\n");
                             close(listen_fd);
                         } else {
-                            printf("\t[ERROR] Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                            printf("\t[ERROR] Wrong client ACK #: %u while (sent) SEQ + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                         } // if wrong ack, then we should just drop the dgram and re-receive
                     } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
                     // we don't worry because we have re-trans and time-out mechanism
@@ -548,13 +544,13 @@ handshake_2nd:
                     // sliding window mechanism
                     // update window size according to advertised client receiver window size
                     sli_win_sz = (config_serv.sli_win_sz < recv_hdr.window_size)?config_serv.sli_win_sz:recv_hdr.window_size;
-                    printf("[INFO] After receiver advertising, sender sliding window size: %u\n", sli_win_sz);
+                    printf("\n[INFO] After receiver advertising, sender sliding window size: %u\n", sli_win_sz);
                     sli_win_sz = (sli_win_sz < cwnd) ? sli_win_sz : cwnd;
                     printf("[INFO] But due to the need of slow start, sender sliding window size is modified to: %u\n", sli_win_sz);
 
                     FILE * data_file = fopen(filename, "r");
                     if(data_file == NULL) {
-                        printf("[ERROR] File %s does not exist!\n", filename);
+                        printf("\n[ERROR] File %s does not exist!\n", filename);
                         exit(1);
                     }
 
@@ -575,7 +571,7 @@ handshake_2nd:
                             uint32_t idx; 
                             for(idx = 1; idx <= sli_win_sz; idx++) { // though obviously bigger than needed to be sent
                                 if(idx + (sent_not_ack - window_start) > sli_win_sz) {
-                                    printf("[DEBUG] current idx: %u\n", idx);
+                                    log_debug("[DEBUG] current idx: %u\n", idx);
                                     window_end = sli_window_index - 1;
                                     break;
                                 }
@@ -592,7 +588,7 @@ handshake_2nd:
                                 sli_win[sli_window_index % config_serv.sli_win_sz].data_buf[read_size] = 0;
                                 if(read_size == 0) {// ==0 means read to the end of file
                                     window_end = sli_window_index - 1;
-                                    printf("[INFO] Get to the end of data file! The last datagram seq would be #%d\n", sli_win[window_end % config_serv.sli_win_sz].seq);
+                                    printf("\n[INFO] Get to the end of data file! SEQ of the last datagram would be #%d\n", sli_win[window_end % config_serv.sli_win_sz].seq);
                                     break;
                                 }
                                 sli_win[sli_window_index % config_serv.sli_win_sz].data_sz = read_size;
@@ -602,21 +598,21 @@ handshake_2nd:
                             }
                             sli_win_sz = (window_end - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz + 1;
                             avail_win_sz = config_serv.sli_win_sz - sli_win_sz; // subtract used win size
-                            printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", window_start, sent_not_ack, window_end, sli_win_sz);
+                            log_debug("\n[DEBUG] read_size: %d | window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", read_size, window_start, sent_not_ack, window_end, sli_win_sz, avail_win_sz);
 
                             if(avail_win_sz == 0) {
-                                printf("[INFO] Sender sliding window is full!\n");
+                                printf("\n[INFO] Sender sliding window is full!\n");
                             }
 
                             sli_window_index = sent_not_ack;
                             // int num = ((window_end - sent_not_ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) + 1;
                             int num = 1;
-                            printf("\t[INFO] Sending window gonna send %d Datagrams!\n", idx - num);
+                            printf("\n[INFO] Sending window gonna send %d Datagrams!\n", idx - num);
                             while(num < idx) {
                                 // sent_size = sizeof(struct tcp_header) + read_size;
 
                                 // printf("\n\t[INFO] going to send part #%d: %s\n", seq_num, file_buf);
-                                printf("[INFO] Sending window gonna send Datagram seq #%u\n", sli_win[sli_window_index % config_serv.sli_win_sz].seq);
+                                printf("\t[INFO] Sending window gonna send Datagram seq #%u\n", sli_win[sli_window_index % config_serv.sli_win_sz].seq);
                                 make_dgram(send_dgram,
                                         make_hdr(&send_hdr,
                                             sli_win[sli_window_index % config_serv.sli_win_sz].seq,
@@ -653,7 +649,7 @@ handshake_2nd:
                             if(rtt_timeout(&sli_win[window_start % config_serv.sli_win_sz].rtt) == 0) {
                                 // retransmit sent_not_ack data, from window_start
                                 if(retrans_flag == 1) { // retransmission should be enabled
-                                    printf("\t[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start].seq);
+                                    printf("\n[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start].seq);
                                     make_dgram(send_dgram,
                                             make_hdr(&send_hdr,
                                                 sli_win[window_start % config_serv.sli_win_sz].seq,
@@ -671,12 +667,12 @@ handshake_2nd:
                                     }
 
                                 } else {
-                                    printf("[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
+                                    printf("\n[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
                                 }
                                 alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
                             }
                             else {
-                                printf("[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
+                                printf("\n[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
                                 exit(1);
                             }
                         }
@@ -688,12 +684,12 @@ handshake_2nd:
 
                             // printf("\n\t[INFO] Received ACK from client after sending part #%d of file %s!\n", seq_num, filename);
                             parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
-                            printf("\t[DEBUG] Received datagram size: %d\n", recv_size);
+                            // log_debug("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
 
                             if(recv_hdr.window_size == 0) {
-                                printf("\t[ERROR] Receiver sliding window is full! ACK dropped! Waiting for window updates!\n");
-                                printf("\t[INFO] Retransmission disabled!\n");
+                                printf("\n[INFO] Receiver sliding window is full! ACK dropped! Waiting for window updates!\n");
+                                printf("\n[INFO] Retransmission disabled!\n");
                                 if(retrans_flag == 1) {
                                     // alarm(0);
                                     retrans_flag = 0;
@@ -704,7 +700,7 @@ handshake_2nd:
                                 // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
                                 int move_forward = recv_hdr.ack - sli_win[window_start % config_serv.sli_win_sz].seq;
                                 if(move_forward <= 0) {
-                                    printf("[INFO] Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
+                                    printf("\n[INFO] Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
                                             recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
                                     continue;
                                 }
@@ -712,7 +708,7 @@ handshake_2nd:
                                 last_client_seq = recv_hdr.seq;
 
 
-                                printf("[DEBUG] move forward: %d\n", move_forward);
+                                log_debug("\n[DEBUG] move forward: %d\n", move_forward);
                                 int num;
                                 for(num = 0; num < move_forward; num++) {
                                     alarm(0); // disable alarm for sent dgram
@@ -728,18 +724,18 @@ handshake_2nd:
                                 sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
                                              recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
-                                printf("[INFO] after comparing the client acknowledged receiver window size and server's sender window size, sliding window has been modified to be %d\n", sli_win_sz);
+                                printf("\n[INFO] after comparing the client acknowledged receiver window size and server's sender window size, sliding window has been modified to be %d\n", sli_win_sz);
                                 cwnd *= 2;
-                                printf("[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
+                                printf("\n[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
                                 sli_win_sz = (sli_win_sz < cwnd)? sli_win_sz : cwnd;
-                                printf("[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
-                                printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", \
-                                        window_start, sent_not_ack, window_end, sli_win_sz);
+                                printf("\n[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
+                                log_debug("\n[DEBUG] window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
+                                        window_start, sent_not_ack, window_end, sli_win_sz, avail_win_sz);
 
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
                                     // alarm(no_rtt_time_out);
-                                    printf("\t[INFO] Receiver sliding window is open now! Enable retransmission!\n");
+                                    printf("\n[INFO] Receiver sliding window is open now! Enable retransmission!\n");
                                     // alarm(rtt_start(&rtt));
                                 }
 
@@ -756,14 +752,15 @@ handshake_2nd:
                         } while(recv_hdr.window_size == 0); // || recv_hdr.ack != ntohl(send_hdr.seq) + 1);
 
                         if(recv_hdr.ack == sli_win[window_end % config_serv.sli_win_sz].seq + 1 && read_size == 0) {
-                            printf("[INFO] all data sent done!\n");
+                            printf("\n[INFO] all data sent done!\n");
+                            printf("\n[INFO] File %s sent complete!\n", filename);
                             int to_close = 0;
 
                             // server ---FIN---> client
                             // server <---FIN/ACK--- client
                             // server ---ACK---> client
 
-                            printf("[INFO] Server child is gonna tell client to finish this work!\n");
+                            printf("\n[INFO] Server child is gonna tell client to finish this work!\n");
 
                             make_dgram(send_dgram, 
                                     make_hdr(&send_hdr,
@@ -776,7 +773,7 @@ handshake_2nd:
                                     NULL,
                                     0,
                                     &sent_size);
-                            log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                            // log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
                             // no ARQ needed here
 
                             signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
@@ -789,12 +786,12 @@ syn_to_client:
                             alarm(no_rtt_time_out);
                             if(sigsetjmp(jmpbuf, 1) != 0) {
                                 if(no_rtt_time_out < no_rtt_max_time_out) {
-                                    printf("Resend FIN datagram after retransmission time-out %d s\n", no_rtt_time_out);
+                                    printf("\n[INFO] Resend FIN datagram after retransmission time-out %d s\n", no_rtt_time_out);
                                     no_rtt_time_out += 1;
                                     goto syn_to_client;
                                 }
                                 else {
-                                    printf("Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                                    printf("\n[ERROR] Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
                                     exit(1);
                                 }
                             }
@@ -805,7 +802,7 @@ syn_to_client:
                                 }
 
                                 parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
-                                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+                                // log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
 
                                 // print_dgram("Received", &recv_hdr);
                                 if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
@@ -813,7 +810,7 @@ syn_to_client:
                                     to_close = 1;
                                     break;
                                 } else {
-                                    printf("\t[ERROR] Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                                    printf("\n[ERROR] Wrong client ACK #: %u, (sent) SEQ + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
                                 } // if wrong ack, then we should just drop the dgram and re-receive
                             } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
                             // we don't worry because we have re-trans and time-out mechanism
@@ -821,7 +818,7 @@ syn_to_client:
                             alarm(0); // no need to re-trans, disable alarm
 
                             if(to_close) {
-                                printf("[INFO] Server child is gonna send client the last ACK!\n");
+                                printf("\n[INFO] Server child is gonna send client the last ACK!\n");
 
                                 make_dgram(send_dgram, 
                                         make_hdr(&send_hdr,
@@ -834,7 +831,7 @@ syn_to_client:
                                         NULL,
                                         0,
                                         &sent_size);
-                                log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                                // log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
 
                                 if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
                                     my_err_quit("send error");
@@ -845,8 +842,7 @@ syn_to_client:
 
                     }
 
-                    printf("\n[INFO] File %s sent complete!\n", filename);
-                    printf("[INFO] Connection socket gonna close!\n");
+                    printf("\n[INFO] Connection socket gonna close!\n");
                     close(conn_fd);
 
                     // data transfer finished, end child process
@@ -877,7 +873,8 @@ syn_to_client:
 
 finish_all:
     // garbage collection
-    printf("Cleaning junk...\n");
+    printf("\n[INFO] Process gonna close...\n");
+    printf("\n[INFO] Cleaning junk...\n");
 
     if(ip_addr != NULL) free(ip_addr);
     if(net_mask != NULL) free(net_mask);

@@ -320,24 +320,24 @@ int rtt_start(struct rtt_info * ptr) {
 }
 
 void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
-	int delta;
-	ptr->rtt_rtt = ms; /* measured RTT in milliseconds */
-	/*
-	 * Update our estimators of RTT and mean deviation of RTT.
-	 * * See Jacobson's SIGCOMM '88 paper, Appendix A, for the details.
-	 * */
-	delta = ptr->rtt_rtt - ptr->rtt_srtt;
-	ptr->rtt_srtt += (delta >> 3); /* g = 1/8 */
+    int delta;
+    ptr->rtt_rtt = ms; /* measured RTT in milliseconds */
+    /*
+     * Update our estimators of RTT and mean deviation of RTT.
+     * * See Jacobson's SIGCOMM '88 paper, Appendix A, for the details.
+     * */
+    delta = ptr->rtt_rtt - ptr->rtt_srtt;
+    ptr->rtt_srtt += (delta >> 3); /* g = 1/8 */
 
-	if (delta < 0) {
-		delta = -delta;
-	}
+    if (delta < 0) {
+	delta = -delta;
+    }
 
-	/* h = 1/4 */
-	ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2);
-	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+    /* h = 1/4 */
+    ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2); 
+    ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 
-	// rtt_debug(ptr);
+    rtt_debug(ptr);
 }
 
 int rtt_timeout(struct rtt_info * ptr) {
