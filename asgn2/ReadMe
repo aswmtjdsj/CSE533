@@ -1,11 +1,11 @@
-Team members
+0. Team members
 ============
 * Name: Xiang Yu,
   ID: 109417626
 * Name: Yuxuan Shui,
   ID: 109955038
 
-The structure for storing the information of each socket
+1. The structure for storing the information of each socket
 ========================================================
 See utils.h:
 
@@ -16,7 +16,7 @@ See utils.h:
         struct sockaddr * subn_addr;
     };
 
-Strictly unicast only
+2. Strictly unicast only
 =====================
 See server.c
 
@@ -24,7 +24,7 @@ We didn't bind ifi->ifi_braddr or something else.
 
 We only bind ifi->ifi_addr, which are unicast address.
 
-RTT mechanism
+3. RTT mechanism
 ================
 See utils.h and utils.c and server.c
 
@@ -41,35 +41,48 @@ modification: change all numeric operation from float to int
 
 keypoint:
 
-* every datagram during file transmission, has its own rtt_info structure
+a. every datagram during file transmission, has its own rtt_info structure
     which means each datagram has its own timeout timer
-* after receiving each valid ACK from client, server will update RTO of several datagrams,
+b. after receiving each valid ACK from client, server will update RTO of several datagrams,
     which are in the sender sliding window, sent but not acked.
 c. During the 3-step handshake procedure, due to the insufficient timestamp information,
     we apply a simple timeout mechanism, which repetively try from 3 seconds timeout to 12 seconds
 
-ARQ mechanism
+4. ARQ mechanism
 =============
-//
+See server.c
+A sender sliding window with the maximum size of the number declared in server.in configuration file.
+Using a loop array to implement such structure.
+Has a left-window-boundary, right-window-boundary and a sent-but-not-acked boundary, these 3 pointers with the structure.
+The figure is like as below:
+                  |                         |                 |
+    left-boundary |     sent-no-ack-boundary|   right-boundary|
+  (sent and acked)|    (sent but not acked) |   (can be sent) |  (cannot be sent)
+Every time, sender sends all the datagrams in the (sent-no-ack, right-boundary], and the sent-no-ack boundary moves right
+When sender gets an ACK from receiver, the left-boundary moves right to the datagram denoted by ACK datagram's ack (which is the next datagram should be acked)
 
-Other mechanism of adding reliability
+5. Other mechanism of adding reliability
 =====================================
 
-slow start:
------------
-//
+a. slow start:
+===========
+See server.c
+add a congestion window, cwnd with init value:1
+every time a complete window has been sent by server and acknowledged by client
+the cwnd value would be doubled
+the real sender sliding window size would be the smaller one of (Maximum sender slding window size, receiver advertised sliding window size and congetsion window size)
 
-congestion avoidance:
+b. congestion avoidance:
 ---------------------
 //
 
-fast retransmit:
+c. fast retransmit:
 ----------------
 
-fast recovery:
+d. fast recovery:
 --------------
 
-End-of-connection notification
+6. End-of-connection notification
 ==============================
 
 We notify the client that connection is ended by sending a FIN packet to client from the server.
