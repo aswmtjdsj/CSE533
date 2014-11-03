@@ -22,7 +22,7 @@ all: $(OBJS) prifinfo_plus client server
 
 -include $(OBJS:.o=.P)
 
-$(client_OBJS): CFLAGS+=-pthread
+$(client_OBJS): CFLAGS+=$(client_LIBS)
 
 prifinfo_plus: $(prifinfo_plus_OBJS)
 	$(CC) $(CFLAGS) -o prifinfo_plus $(prifinfo_plus_OBJS) $(LIBS)
