@@ -839,7 +839,7 @@ syn_to_client:
                     close(conn_fd);
 
                     // data transfer finished, end child process
-                    exit(0);
+                    goto finish_all;
 
                 } else {
                     printf("[INFO] Server child #%d forked!\n", child_pid);
@@ -864,6 +864,7 @@ syn_to_client:
         }
     }
 
+finish_all:
     // garbage collection
     printf("Cleaning junk...\n");
 

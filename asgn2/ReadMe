@@ -1,7 +1,8 @@
 0. {name: Xiang Yu; ID: 109417626;}; {name: Yuxuan Shui; ID: 109955038;}
 
 1.
-// the structure for storing the information of each socket
+the structure for storing the information of each socket
+--->in utils.h
 struct sock_info_aux {
     int sock_fd;
     struct sockaddr * ip_addr;
@@ -10,7 +11,36 @@ struct sock_info_aux {
 };
 
 2.
-// unicast
-// TODO
+unicast
+TODO
 
 3.
+RTT mechanism
+--->in utils.h and utils.c and server.c
+
+struct rtt_info {
+    int rtt_rtt; /* most recent measured RTT, in milliseconds */
+    int rtt_srtt; /* smoothed RTT estimator, in milliseconds */
+    int rtt_rttvar; /* smoothed mean deviation, in milliseconds */ 
+    int rtt_rto; /* current RTO to use, in milliseconds */
+    int rtt_nrexmt; /* # times retransmitted: 0, 1, 2, ... */
+    uint32_t rtt_base; /* # msec since 1/1/1970 at start */
+};
+
+modification: change all numeric operation from float to int
+
+keypoint:
+a. every datagram during file transmission, has its own rtt_info structure
+    which means each datagram has its own timeout timer
+b. after receiving each valid ACK from client, server will update RTO of several datagrams,
+    which are in the sender sliding window, sent but not acked.
+
+4.
+ARQ mechanism
+//
+
+5.
+// other mechanism
+
+6.
+// last notice
