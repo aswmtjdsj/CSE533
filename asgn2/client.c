@@ -15,18 +15,15 @@ static struct cfg {
 	char filename[PATH_MAX];
 	short port;
 	int recv_win;
-	int seed;
+	unsigned int seed;
 	double drop_rate;
 	double read_rate;
 }cfg;
 static pthread_t reader;
-static char rbuf[256];
-static struct random_data rdata;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 	protocol_print(buf, "\t", 1);
-	int tmp;
-	random_r(&rdata, &tmp);
+	int tmp = rand_r(&cfg.seed);
 	if (tmp <= cfg.drop_rate*RAND_MAX) {
 		log_info("\n[send] Following packet dropped: \n");
 		protocol_print(buf, "sss\t", 1);
@@ -39,7 +36,7 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 		int ret = recv(fd, buf, len, flags);
 		int tmp;
 		protocol_print(buf, "rrr\t", 1);
-		random_r(&rdata, &tmp);
+		tmp = rand_r(&cfg.seed);
 		if (ret < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -124,7 +121,6 @@ void connect_callback(struct protocol *p, int err) {
 #endif
 		//Use a separate thread to read data;
 		pthread_create(&reader, NULL, reader_thread, p);
-		pthread_detach(reader);
 		return;
 	}
 	if (err == -ETIMEDOUT) {
@@ -137,7 +133,11 @@ void connect_callback(struct protocol *p, int err) {
 	}
 	if (err > 0) {
 		if (p->state == CLOSED) {
-			log_info("Connection terminated, quitting...\n");
+			void *status;
+			log_info("Connection terminated, waiting for "
+			    "reader thread to finish...\n");
+			pthread_join(reader, &status);
+			log_info("Quitting...\n");
 			exit(0);
 		}
 		log_debug("Unhandled status change\n");
@@ -154,6 +154,7 @@ int main(int argc, char * const *argv) {
 		log_warning("Failed to open %s\n", cfgname);
 		return 1;
 	}
+	srandom(time(NULL));
 
 	fgets(cfg.addr, sizeof(cfg.addr), cfgfile);
 	if (!iseols(cfg.addr))
@@ -175,9 +176,6 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
-	memset(rbuf, 0, sizeof(rbuf));
-	memset(&rdata, 0, sizeof(rdata));
-	initstate_r(cfg.seed, rbuf, sizeof(rbuf), &rdata);
 	struct sockaddr_in saddr;
 	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
