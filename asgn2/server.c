@@ -754,7 +754,7 @@ handshake_2nd:
 
                             make_dgram(send_dgram, 
                                     make_hdr(&send_hdr,
-                                        recv_hdr.ack + 1,
+                                        recv_hdr.ack,
                                         recv_hdr.seq + 1,
                                         0, // no need to use rtt here
                                         0,
