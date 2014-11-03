@@ -172,6 +172,7 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		fd_set_cb(p->fh, protocol_last_ack);
 		p->state = LAST_ACK;
+		timer_remove(p->ml, p->timeout);
 		return;
 	}
 
