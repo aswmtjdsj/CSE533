@@ -649,7 +649,7 @@ handshake_2nd:
                             if(rtt_timeout(&sli_win[window_start % config_serv.sli_win_sz].rtt) == 0) {
                                 // retransmit sent_not_ack data, from window_start
                                 if(retrans_flag == 1) { // retransmission should be enabled
-                                    printf("\n[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start].seq);
+                                    printf("\n[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start % config_serv.sli_win_sz].seq);
                                     make_dgram(send_dgram,
                                             make_hdr(&send_hdr,
                                                 sli_win[window_start % config_serv.sli_win_sz].seq,
@@ -702,7 +702,7 @@ handshake_2nd:
                                 if(move_forward <= 0) {
                                     printf("\n[INFO] Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
                                             recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
-                                    continue;
+                                    break; // should be?
                                 }
 
                                 last_client_seq = recv_hdr.seq;
@@ -729,8 +729,8 @@ handshake_2nd:
                                 printf("\n[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
                                 sli_win_sz = (sli_win_sz < cwnd)? sli_win_sz : cwnd;
                                 printf("\n[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
-                                log_debug("\n[DEBUG] window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
-                                        window_start, sent_not_ack, window_end, sli_win_sz, avail_win_sz);
+                                log_debug("\n[DEBUG] read_size: %d | window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
+                                        read_size, window_start, sent_not_ack, window_end, sli_win_sz, avail_win_sz);
 
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
@@ -742,7 +742,9 @@ handshake_2nd:
                                 if(recv_hdr.tsecr != 0) {
                                     num = window_start;
                                     while(num != sent_not_ack) {
+                                        printf("\n[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[num % config_serv.sli_win_sz].seq);
                                         rtt_stop(&sli_win[num % config_serv.sli_win_sz].rtt, rtt_ts(&sli_win[num % config_serv.sli_win_sz].rtt) - recv_hdr.tsecr); // update rtt after every received packet
+                                        alarm(rtt_start(&sli_win[num % config_serv.sli_win_sz].rtt));
                                         num = num + 1;
                                     }
                                     //which has server sending timestamp
