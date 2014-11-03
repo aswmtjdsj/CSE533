@@ -570,20 +570,12 @@ handshake_2nd:
 
                             uint32_t idx; 
                             for(idx = 1; idx <= sli_win_sz; idx++) { // though obviously bigger than needed to be sent
+                                log_debug("[DEBUG] current idx: %u\n", idx);
                                 if(idx + (sent_not_ack - window_start) > sli_win_sz) {
-                                    log_debug("[DEBUG] current idx: %u\n", idx);
                                     window_end = sli_window_index - 1;
                                     break;
                                 }
-                                // the first time to read the file
-                                if(read_size == -1) {
-                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = recv_hdr.ack;
-                                }
-                                else {
-                                    // last dgram seq + 1
-                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = \
-                                                                    sli_win[(sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz].seq + 1;
-                                }
+                                int prev_read_size = read_size;
                                 read_size = fread(sli_win[sli_window_index % config_serv.sli_win_sz].data_buf, sizeof(uint8_t), DATAGRAM_SIZE - sizeof(struct tcp_header), data_file);
                                 sli_win[sli_window_index % config_serv.sli_win_sz].data_buf[read_size] = 0;
                                 if(read_size == 0) {// ==0 means read to the end of file
@@ -595,6 +587,16 @@ handshake_2nd:
                                 window_end = sli_window_index; // update window end
                                 sli_window_index = sli_window_index + 1;
                                 rtt_init(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
+
+                                // the first time to read the file
+                                if(prev_read_size == -1) {
+                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = recv_hdr.ack;
+                                }
+                                else {
+                                    // last dgram seq + 1
+                                    sli_win[sli_window_index % config_serv.sli_win_sz].seq = \
+                                                                    sli_win[(sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz].seq + 1;
+                                }
                             }
                             sli_win_sz = (window_end - window_start + config_serv.sli_win_sz) % config_serv.sli_win_sz + 1;
                             avail_win_sz = config_serv.sli_win_sz - sli_win_sz; // subtract used win size
@@ -625,7 +627,6 @@ handshake_2nd:
                                         sli_win[sli_window_index % config_serv.sli_win_sz].data_sz,
                                         &sent_size); /* TODO */ /* ARQ */
 
-                                sli_window_index = sli_window_index + 1;
 
                                 if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
                                     my_err_quit("send error");
@@ -635,8 +636,10 @@ handshake_2nd:
                                 // init RTT counter for every dgram
                                 rtt_newpack(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
 
+                                printf("\t[INFO] Gonna emit the RTT timer for datagram with SEQ %u\n", sli_win[sli_window_index % config_serv.sli_win_sz].seq);
                                 alarm(rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt));
 
+                                sli_window_index = sli_window_index + 1;
                                 num++;
                             }
 
@@ -646,34 +649,39 @@ handshake_2nd:
                         }
 
                         if(sigsetjmp(jmpbuf, 1) != 0) {
-                            if(rtt_timeout(&sli_win[window_start % config_serv.sli_win_sz].rtt) == 0) {
-                                // retransmit sent_not_ack data, from window_start
-                                if(retrans_flag == 1) { // retransmission should be enabled
-                                    printf("\n[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start % config_serv.sli_win_sz].seq);
-                                    make_dgram(send_dgram,
-                                            make_hdr(&send_hdr,
-                                                sli_win[window_start % config_serv.sli_win_sz].seq,
-                                                recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
-                                                rtt_ts(&sli_win[window_start % config_serv.sli_win_sz].rtt),
-                                                0, // recv_hdr.tsopt, no use of using the client timestamp
-                                                0,
-                                                avail_win_sz),
-                                            sli_win[window_start % config_serv.sli_win_sz].data_buf,
-                                            sli_win[window_start % config_serv.sli_win_sz].data_sz,
-                                            &sent_size);
+                            if(window_start <= window_end) {
+                                if(rtt_timeout(&sli_win[window_start % config_serv.sli_win_sz].rtt) == 0) {
+                                    // retransmit sent_not_ack data, from window_start
+                                    if(retrans_flag == 1) { // retransmission should be enabled
+                                        printf("\n[INFO] TIMEOUT, retransmit Dgram with seq #%d\n", sli_win[window_start % config_serv.sli_win_sz].seq);
+                                        make_dgram(send_dgram,
+                                                make_hdr(&send_hdr,
+                                                    sli_win[window_start % config_serv.sli_win_sz].seq,
+                                                    recv_hdr.seq, // as ack = seq + 1, only when responding to SYN or data payload
+                                                    rtt_ts(&sli_win[window_start % config_serv.sli_win_sz].rtt),
+                                                    0, // recv_hdr.tsopt, no use of using the client timestamp
+                                                    0,
+                                                    avail_win_sz),
+                                                sli_win[window_start % config_serv.sli_win_sz].data_buf,
+                                                sli_win[window_start % config_serv.sli_win_sz].data_sz,
+                                                &sent_size);
 
-                                    if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
-                                        my_err_quit("send error");
+                                        if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                                            my_err_quit("send error");
+                                        }
+
+                                    } else {
+                                        printf("\n[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
                                     }
-
-                                } else {
-                                    printf("\n[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
+                                    printf("\t[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[window_start % config_serv.sli_win_sz].seq);
+                                    alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
                                 }
-                                alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
-                            }
-                            else {
-                                printf("\n[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
-                                exit(1);
+                                else {
+                                    printf("\n[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
+                                    exit(1);
+                                }
+                            } else {
+                                printf("\n[INFO] All datagrams have been sent! No need to retransmit!\n");
                             }
                         }
 
@@ -685,7 +693,11 @@ handshake_2nd:
                             // printf("\n\t[INFO] Received ACK from client after sending part #%d of file %s!\n", seq_num, filename);
                             parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
                             // log_debug("\t[DEBUG] Received datagram size: %d\n", recv_size);
-
+                            // printf("\n[DEBUG] !!! %d\n", sli_win[window_end % config_serv.sli_win_sz].seq + 1);
+                            if(read_size == 0 && recv_hdr.ack == sli_win[window_end % config_serv.sli_win_sz].seq + 1) {
+                                printf("[INFO] ACK for last datagram received!\n");
+                                break;
+                            }
 
                             if(recv_hdr.window_size == 0) {
                                 printf("\n[INFO] Receiver sliding window is full! ACK dropped! Waiting for window updates!\n");
@@ -709,9 +721,10 @@ handshake_2nd:
 
 
                                 log_debug("\n[DEBUG] move forward: %d\n", move_forward);
-                                int num;
+                                uint32_t num;
                                 for(num = 0; num < move_forward; num++) {
-                                    alarm(0); // disable alarm for sent dgram
+                                    printf("\n[INFO] Gonna disable the RTT timer for datagram with SEQ %u\n", sli_win[(window_start + num) % config_serv.sli_win_sz].seq);
+                                    //alarm(0); // disable alarm for sent dgram
                                 }
 
                                 window_start = window_start + move_forward;
@@ -729,7 +742,7 @@ handshake_2nd:
                                 printf("\n[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
                                 sli_win_sz = (sli_win_sz < cwnd)? sli_win_sz : cwnd;
                                 printf("\n[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
-                                log_debug("\n[DEBUG] read_size: %d | window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
+                                log_debug("\n[DEBUG][A] read_size: %d | window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
                                         read_size, window_start, sent_not_ack, window_end, sli_win_sz, avail_win_sz);
 
                                 if(retrans_flag == 0) {
@@ -742,9 +755,8 @@ handshake_2nd:
                                 if(recv_hdr.tsecr != 0) {
                                     num = window_start;
                                     while(num != sent_not_ack) {
-                                        printf("\n[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[num % config_serv.sli_win_sz].seq);
+                                        //printf("\n[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[num % config_serv.sli_win_sz].seq);
                                         rtt_stop(&sli_win[num % config_serv.sli_win_sz].rtt, rtt_ts(&sli_win[num % config_serv.sli_win_sz].rtt) - recv_hdr.tsecr); // update rtt after every received packet
-                                        alarm(rtt_start(&sli_win[num % config_serv.sli_win_sz].rtt));
                                         num = num + 1;
                                     }
                                     //which has server sending timestamp
