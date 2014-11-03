@@ -177,7 +177,7 @@ int main(int argc, char * const *argv) {
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
 	struct sockaddr_in saddr;
-	int flags, ret;
+	int flags = 0, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
 	saddr.sin_port = htons(cfg.port);
 	saddr.sin_family = AF_INET;

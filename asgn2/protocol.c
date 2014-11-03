@@ -255,7 +255,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 
 	struct sockaddr _saddr;
 	socklen_t len = sizeof(_saddr);
-	getsockname(p->fd, &_saddr, &len);
+	getpeername(p->fd, &_saddr, &len);
 	assert(_saddr.sa_family == AF_INET);
 
 	//Reconnect
