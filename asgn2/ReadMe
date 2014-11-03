@@ -90,7 +90,7 @@ next missing packet. Then client will send an ACK to the server, with next-seq a
 5. Other mechanism of adding reliability
 =====================================
 
-a. slow start:
+a. congestion avoidance: slow start with AIMD
 --------------
 
 See server.c
@@ -99,14 +99,12 @@ add a congestion window, cwnd with init value:1
 
 every time a complete window has been sent by server and acknowledged by client
 
-the cwnd value would be doubled
+the cwnd value would be added by 1
 
 the real sender sliding window size would be the smaller one of (Maximum sender
 slding window size, receiver advertised sliding window size and congetsion window size)
 
-b. congestion avoidance:
----------------------
-//
+when a congestion is detected, namely TIMEOUT happended, the window decreased half of its size
 
 c. fast retransmit:
 ----------------
