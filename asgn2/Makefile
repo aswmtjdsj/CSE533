@@ -9,10 +9,11 @@ UNAME := $(shell uname -s)
 CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
+	client_CFLAGS += -D_REENTRANT
 	client_LIBS += -lpthread
-	CFLAGS += -DBSD_COMP -D_REENTRANT
+	CFLAGS += -DBSD_COMP
 else
-	client_LIBS += -pthread
+	client_CFLAGS += -pthread
 endif
 
 all: $(OBJS) prifinfo_plus client server
@@ -22,13 +23,13 @@ all: $(OBJS) prifinfo_plus client server
 
 -include $(OBJS:.o=.P)
 
-$(client_OBJS): CFLAGS+=$(client_LIBS)
+$(client_OBJS): CFLAGS+=$(client_CFLAGS)
 
 prifinfo_plus: $(prifinfo_plus_OBJS)
 	$(CC) $(CFLAGS) -o prifinfo_plus $(prifinfo_plus_OBJS) $(LIBS)
 
 client: $(client_OBJS)
-	$(CC) $(CFLAGS) -o client $(client_OBJS) $(client_LIBS) $(LIBS)
+	$(CC) $(CFLAGS) -o client $(client_OBJS) $(client_LIBS) $(client_CFLAGS) $(LIBS)
 
 server: $(server_OBJS)
 	$(CC) $(CFLAGS) -o server $^ $(LIBS)
