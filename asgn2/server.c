@@ -491,9 +491,8 @@ handshake_2nd:
 
                     if(no_rtt_time_out != no_rtt_init_time_out) { // this is a retransmission scenario
                         // should send the dgram via both listening and connection sock
-                        if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
-                                        cli_addr, cli_len)) < 0) {
-                            my_err_quit("sendto error");
+                        if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                            my_err_quit("send error");
                         }
                     }
 
@@ -622,9 +621,8 @@ handshake_2nd:
 
                                 sli_window_index = sli_window_index + 1;
 
-                                if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
-                                                cli_addr, cli_len)) < 0) {
-                                    my_err_quit("sendto error");
+                                if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                                    my_err_quit("send error");
                                 }
 
                                 // use RTT mechanism
@@ -658,9 +656,8 @@ handshake_2nd:
                                             sli_win[window_start % config_serv.sli_win_sz].data_sz,
                                             &sent_size);
 
-                                    if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
-                                                    cli_addr, cli_len)) < 0) {
-                                        my_err_quit("sendto error");
+                                    if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                                        my_err_quit("send error");
                                     }
 
                                 } else {
@@ -769,9 +766,8 @@ handshake_2nd:
                             signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                             set_no_rtt_time_out();
 syn_to_client:
-                            if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
-                                            cli_addr, cli_len)) < 0) {
-                                my_err_quit("sendto error");
+                            if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                                my_err_quit("send error");
                             }
 
                             alarm(no_rtt_time_out);
@@ -824,9 +820,8 @@ syn_to_client:
                                         &sent_size);
                                 log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
 
-                                if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
-                                                cli_addr, cli_len)) < 0) {
-                                    my_err_quit("sendto error");
+                                if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
+                                    my_err_quit("send error");
                                 }
                                 break;
                             }
