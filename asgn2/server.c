@@ -454,9 +454,7 @@ int main(int argc, char * const *argv) {
                     printf("\tServer port: %d\n", ntohs(((struct sockaddr_in *)chi_addr)->sin_port));
                     printf("\n");
                             
-                    // TODO
                     // should not treat the retransmitted SYN as the new incoming dgram
-
                     // connect the client via connection socket
                     if(connect(conn_fd, cli_addr, sizeof(struct sockaddr)) < 0) {
                         my_err_quit("connect error");
@@ -503,7 +501,7 @@ handshake_2nd:
                     if(sigsetjmp(jmpbuf, 1) != 0) {
                         if(no_rtt_time_out < no_rtt_max_time_out) {
                             printf("Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
-                            no_rtt_time_out += 3;
+                            no_rtt_time_out += 1;
                             goto handshake_2nd;
                         }
                         else {
@@ -693,7 +691,8 @@ handshake_2nd:
                                 // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
                                 int move_forward = recv_hdr.ack - sli_win[window_start % config_serv.sli_win_sz].seq;
                                 if(move_forward <= 0) {
-                                    printf("Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
+                                    printf("Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
+                                            recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
                                     continue;
                                 }
 
@@ -715,7 +714,8 @@ handshake_2nd:
                                 sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
                                              recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
-                                printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", window_start, sent_not_ack, window_end, sli_win_sz);
+                                printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", \
+                                        window_start, sent_not_ack, window_end, sli_win_sz);
 
                                 if(retrans_flag == 0) {
                                     retrans_flag = 1;
@@ -738,7 +738,87 @@ handshake_2nd:
 
                         if(recv_hdr.ack == sli_win[window_end % config_serv.sli_win_sz].seq + 1 && read_size == 0) {
                             printf("[INFO] all data sent done!\n");
-                            break;
+                            int to_close = 0;
+
+                            // server ---FIN---> client
+                            // server <---FIN/ACK--- client
+                            // server ---ACK---> client
+
+                            printf("[INFO] Server child is gonna tell client to finish this work!\n");
+
+                            make_dgram(send_dgram, 
+                                    make_hdr(&send_hdr,
+                                        recv_hdr.ack + 1,
+                                        recv_hdr.seq + 1,
+                                        0, // no need to use rtt here
+                                        0,
+                                        HDR_FIN,
+                                        avail_win_sz), // available empty sender size
+                                    NULL,
+                                    0,
+                                    &sent_size);
+                            log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                            // no ARQ needed here
+
+                            signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
+                            set_no_rtt_time_out();
+syn_to_client:
+                            if((sent_size = sendto(listen_fd, send_dgram, sent_size, send_flag, 
+                                            cli_addr, cli_len)) < 0) {
+                                my_err_quit("sendto error");
+                            }
+
+                            alarm(no_rtt_time_out);
+                            if(sigsetjmp(jmpbuf, 1) != 0) {
+                                if(no_rtt_time_out < no_rtt_max_time_out) {
+                                    printf("Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
+                                    no_rtt_time_out += 1;
+                                    goto syn_to_client;
+                                }
+                                else {
+                                    printf("Retransmission time-out reaches the limit: %d s, giving up...\n", no_rtt_max_time_out);
+                                    exit(1);
+                                }
+                            }
+
+                            do {
+                                if((recv_size = recvfrom(conn_fd, recv_dgram, (size_t) DATAGRAM_SIZE, 0, cli_addr, (socklen_t *) &cli_len)) < 0) {
+                                    my_err_quit("recvfrom error");
+                                }
+
+                                parse_dgram(recv_dgram, &recv_hdr, NULL, recv_size);
+                                log_info("\t[DEBUG] Received datagram size: %d\n", recv_size);
+
+                                // print_dgram("Received", &recv_hdr);
+                                if(recv_hdr.ack == ntohl(send_hdr.seq) + 1) {
+                                    printf("\t[INFO] Client SYN+ACK received! Gonna close!\n");
+                                    to_close = 1;
+                                    break;
+                                } else {
+                                    printf("\t[ERROR] Wrong ACK #: %u, (sent) seq + 1 #: %u expected!\n", recv_hdr.ack, ntohl(send_hdr.seq)+1);
+                                } // if wrong ack, then we should just drop the dgram and re-receive
+                            } while(recv_hdr.ack != ntohl(send_hdr.seq) + 1);
+                            // we don't worry because we have re-trans and time-out mechanism
+
+                            alarm(0); // no need to re-trans, disable alarm
+
+                            if(to_close) {
+                                printf("[INFO] Server child is gonna send client the last ACK!\n");
+
+                                make_dgram(send_dgram, 
+                                        make_hdr(&send_hdr,
+                                            recv_hdr.ack + 1,
+                                            recv_hdr.seq + 1,
+                                            0, // no need to use rtt here
+                                            0,
+                                            HDR_ACK,
+                                            avail_win_sz), // available empty sender size
+                                        NULL,
+                                        0,
+                                        &sent_size);
+                                log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+                                break;
+                            }
                         }
 
                     }
