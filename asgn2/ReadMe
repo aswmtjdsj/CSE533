@@ -1,1 +1,16 @@
 0. {name: Xiang Yu; ID: 109417626;}; {name: Yuxuan Shui; ID: 109955038;}
+
+1.
+// the structure for storing the information of each socket
+struct sock_info_aux {
+    int sock_fd;
+    struct sockaddr * ip_addr;
+    struct sockaddr * net_mask;
+    struct sockaddr * subn_addr;
+};
+
+2.
+// unicast
+// TODO
+
+3.
