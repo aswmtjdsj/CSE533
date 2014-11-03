@@ -222,6 +222,22 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 	p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 	log_info("Sent ACK, with ack number = %u\n", p->eseq);
 
+	int i = p->h, iseq = p->eseq;
+	int ackd = 1;
+	iseq -= p->e-p->h;
+	if (iseq > p->eseq)
+		iseq -= p->window_size+1;
+	log_info("Window status: \n");
+	while(i!=p->t) {
+		if (i == p->e)
+			ackd = 0;
+		if (p->window[i].present)
+			log_info("Packet with seq %u, received, %s\n",
+			    iseq, ackd ? "ACK'd" : "not ACK'd");
+		iseq++;
+		i=(i+1)%(p->window_size+1);
+	}
+
 	if (owsz <= 0)
 		log_info("Window is full\n");
 
