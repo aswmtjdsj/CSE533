@@ -769,7 +769,7 @@ handshake_2nd:
                             signal(SIGALRM, sig_alarm); // for retransmission of 2nd hand shake
                             set_no_rtt_time_out();
 syn_to_client:
-                            if((sent_size = sendto(listen_fd, send_dgram, sent_size, send_flag, 
+                            if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
                                             cli_addr, cli_len)) < 0) {
                                 my_err_quit("sendto error");
                             }
@@ -777,7 +777,7 @@ syn_to_client:
                             alarm(no_rtt_time_out);
                             if(sigsetjmp(jmpbuf, 1) != 0) {
                                 if(no_rtt_time_out < no_rtt_max_time_out) {
-                                    printf("Resend ACK+SYN datagram after retransmission time-out %d s\n", no_rtt_time_out);
+                                    printf("Resend FIN datagram after retransmission time-out %d s\n", no_rtt_time_out);
                                     no_rtt_time_out += 1;
                                     goto syn_to_client;
                                 }
