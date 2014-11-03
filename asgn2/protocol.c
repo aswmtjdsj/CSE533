@@ -43,6 +43,53 @@ static void make_header(uint32_t seq, uint32_t ack, uint16_t flags,
 	hdr->tsopt = htonl(t.tv_sec*1000+t.tv_nsec/1000000);
 	return;
 }
+static void protocol_last_ack(void *ml, void *data, int rw) {
+	struct protocol *p = data;
+	uint8_t buf[DATAGRAM_SIZE], s[DATAGRAM_SIZE];
+	ssize_t ret = p->recv(p->fd, buf, sizeof(buf), 0);
+	if (ret <= 0) {
+		/* Possibly simulated data loss */
+		if (ret < 0)
+			log_warning("recv() failed: %s\n", strerror(errno));
+		return;
+	}
+
+	struct tcp_header *hdr = (void *)buf;
+	hdr->window_size = ntohs(hdr->window_size);
+	hdr->ack = ntohl(hdr->ack);
+	hdr->seq = ntohl(hdr->seq);
+	hdr->flags = ntohs(hdr->flags);
+	hdr->tsopt = ntohl(hdr->tsopt);
+
+	if (hdr->flags & HDR_FIN) {
+		if (hdr->seq != p->eseq) {
+			log_info("FIN with invalid SEQ\n");
+			return;
+		}
+		if (hdr->ack != p->syn_seq) {
+			log_info("FIN with invalid ACK\n");
+			return;
+		}
+		log_info("Received duplicated FIN, resending FINACK...\n");
+		make_header(hdr->ack, p->eseq, HDR_ACK|HDR_FIN, 0,
+		    hdr->tsopt, s);
+		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		return;
+	}
+
+	if (hdr->flags & HDR_ACK) {
+		if (hdr->seq != p->eseq) {
+			log_info("FIN with invalid SEQ\n");
+			return;
+		}
+		if (hdr->ack != p->syn_seq) {
+			log_info("FIN with invalid ACK\n");
+			return;
+		}
+		log_info("Received ACK, connection terminated...\n");
+		p->ccb(p, 1);
+	}
+}
 static void protocol_data_callback(void *ml, void *data, int rw) {
 	/* It's still possible to receive SYN-ACK here.
 	 * And we need to re-transmit ACK if we do */
@@ -79,6 +126,24 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 				    hdr->tsopt, s);
 			p->send(p->fd, s, sizeof(*hdr), p->send_flags);
 		}
+		return;
+	}
+
+	if (hdr->flags & HDR_FIN) {
+		if (hdr->seq != p->eseq) {
+			log_info("FIN with invalid SEQ\n");
+			return;
+		}
+		if (hdr->ack != p->syn_seq) {
+			log_info("FIN with invalid ACK\n");
+			return;
+		}
+		log_info("Received FIN, terminating connection...\n");
+		make_header(hdr->ack, p->eseq, HDR_ACK|HDR_FIN, 0,
+		    hdr->tsopt, s);
+		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
+		fd_set_cb(p->fh, protocol_last_ack);
+		p->state = LAST_ACK;
 		return;
 	}
 
@@ -151,6 +216,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 			log_warning("recv() failed: %s\n", strerror(errno));
 		return;
 	}
+	protocol_print(buf, "xxx\t", 1);
 	struct tcp_header *hdr = (void *)buf;
 	hdr->window_size = ntohs(hdr->window_size);
 	hdr->ack = ntohl(hdr->ack);
@@ -196,7 +262,7 @@ static void protocol_synack_handler(void *ml, void *data, int rw) {
 	ret = connect(p->fd, (struct sockaddr *)saddr, len);
 	if (ret < 0) {
 		log_warning("Failed to re-connect: %s\n", strerror(errno));
-		p->ccb(p, errno);
+		p->ccb(p, -errno);
 	}
 
 	log_debug("Reconnected, port %u\n", nport);
@@ -222,7 +288,7 @@ protocol_syn_timeout(void *ml, void *data, const struct timeval *tv) {
 	if (tv->tv_sec >= 12) {
 		log_warning("Maximum number of timedouts reached, "
 		    "giving up...\n");
-		p->ccb(p, ETIMEDOUT);
+		p->ccb(p, -ETIMEDOUT);
 		protocol_destroy(p);
 		return;
 	}

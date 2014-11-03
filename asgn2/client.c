@@ -20,11 +20,16 @@ static struct cfg {
 	double read_rate;
 }cfg;
 static pthread_t reader;
+static char rbuf[256];
+static struct random_data rdata;
 //Probability send/receive. drop packet at cfg.drop_rate
 ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
-	if (random() <= cfg.drop_rate*RAND_MAX) {
+	protocol_print(buf, "\t", 1);
+	int tmp;
+	random_r(&rdata, &tmp);
+	if (tmp <= cfg.drop_rate*RAND_MAX) {
 		log_info("\n[send] Following packet dropped: \n");
-		protocol_print(buf, "\t", 1);
+		protocol_print(buf, "sss\t", 1);
 		return 0;
 	}
 	return send(fd, buf, len, flags);
@@ -32,36 +37,28 @@ ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 	while(1) {
 		int ret = recv(fd, buf, len, flags);
+		int tmp;
+		protocol_print(buf, "rrr\t", 1);
+		random_r(&rdata, &tmp);
 		if (ret < 0) {
 			if (errno == EAGAIN)
 				return 0;
 			return ret;
 		}
-		if (random() > cfg.drop_rate*RAND_MAX)
+		if (tmp > cfg.drop_rate*RAND_MAX)
 			return ret;
 		log_info("\n[recv] Following packet dropeed: \n");
 		protocol_print(buf, "\t", 1);
 	}
 }
 void *reader_thread(void *d) {
-	struct random_data buf;
 	struct protocol *p = d;
 	uint8_t dbuf[DATAGRAM_SIZE*10];
-	char *sbuf = malloc(128);
-	memset(sbuf, 0, 128);
-	memset(&buf, 0, sizeof(buf));
-	int ret = initstate_r(cfg.seed, sbuf, 100, &buf);
-	if (ret != 0) {
-		log_warning("[reader_thread] srandom_r failed, %d\n",
-		    ret);
-		perror("");
-		return NULL;
-	}
 	while(1) {
 		struct timespec start, rt, end;
-		int tmpi;
+		int tmpi, ret;
 		double tmpf;
-		random_r(&buf, &tmpi);
+		tmpi = random();
 		tmpf = (double)tmpi/(double)RAND_MAX;
 		tmpf = -1*cfg.read_rate*log(tmpf);
 		clock_gettime(CLOCK_MONOTONIC, &start);
@@ -130,12 +127,21 @@ void connect_callback(struct protocol *p, int err) {
 		pthread_detach(reader);
 		return;
 	}
-	if (err == ETIMEDOUT) {
-		log_warning("Connection timedout, quiting...\n");
+	if (err == -ETIMEDOUT) {
+		log_warning("Connection timedout, quitting...\n");
 		exit(1);
 	}
-	log_warning("Unhandled error: %s\n", strerror(err));
-	exit(1);
+	if (err < 0) {
+		log_warning("Unhandled error: %s\n", strerror(err));
+		exit(1);
+	}
+	if (err > 0) {
+		if (p->state == CLOSED) {
+			log_info("Connection terminated, quitting...\n");
+			exit(0);
+		}
+		log_debug("Unhandled status change\n");
+	}
 }
 int main(int argc, char * const *argv) {
 	const char *cfgname;
@@ -169,7 +175,9 @@ int main(int argc, char * const *argv) {
 
 	fscanf(cfgfile, "%lf\n", &cfg.read_rate);
 
-	srandom(cfg.seed);
+	memset(rbuf, 0, sizeof(rbuf));
+	memset(&rdata, 0, sizeof(rdata));
+	initstate_r(cfg.seed, rbuf, sizeof(rbuf), &rdata);
 	struct sockaddr_in saddr;
 	int flags, ret;
 	inet_pton(AF_INET, cfg.addr, &saddr.sin_addr);
