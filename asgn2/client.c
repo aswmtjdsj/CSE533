@@ -29,6 +29,8 @@ ssize_t prob_send(int fd, uint8_t *buf, int len, int flags) {
 		protocol_print(buf, "\t", 1);
 		return 0;
 	}
+	log_info("\n[send] Following packet sent: \n");
+	protocol_print(buf, "\t", 1);
 	return send(fd, buf, len, flags);
 }
 ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
@@ -41,8 +43,11 @@ ssize_t prob_recv(int fd, uint8_t *buf, int len, int flags) {
 				return 0;
 			return ret;
 		}
-		if (tmp >= cfg.drop_rate*RAND_MAX)
+		if (tmp >= cfg.drop_rate*RAND_MAX) {
+			log_info("\n[recv]Received: \n");
+			protocol_print(buf, "\t", 1);
 			return ret;
+		}
 		log_info("\n[recv] Following packet dropeed: \n");
 		protocol_print(buf, "\t", 1);
 	}
@@ -78,9 +83,6 @@ nsleep:
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		timespec_substract(&end, &start);
-		//double st = end.tv_sec+(double)end.tv_nsec/1000000000.0;
-		//log_info("[reader_thread] slept for %lf milliseconds "
-		//    "(%lf expected).\n", st*1000, (double)tmpf);
 		int count, tc = 0, tb = 0;
 		while(1) {
 			count = 10;
@@ -97,10 +99,16 @@ nsleep:
 			tc += count;
 			tb += ret;
 			dbuf[ret] = 0;
-			log_info("[DATA] %s\n", dbuf);
+			log_info("[reader_thread DATA]\n%s\n", dbuf);
 		}
-		log_info("[reader_thread] read %d datagrams "
-		    "(%d bytes) in total.\n", tc, tb);
+		if (tc > 0) {
+			double st = end.tv_sec+(double)end.tv_nsec/1000000000.0;
+			log_info("[reader_thread] slept for %lf milliseconds "
+			    "(%lf expected).\n", st*1000, (double)tmpf);
+			log_info("[reader_thread] read %d datagrams "
+			    "(%d bytes) in total.\n", tc, tb);
+		} else
+			log_info("[reader_thread] No data read\n");
 	}
 	return NULL;
 }
