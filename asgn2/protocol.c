@@ -62,12 +62,12 @@ static void protocol_last_ack(void *ml, void *data, int rw) {
 	hdr->tsopt = ntohl(hdr->tsopt);
 
 	if (hdr->flags & HDR_FIN) {
-		if (hdr->seq != p->eseq) {
-			log_info("FIN with invalid SEQ\n");
+		if (hdr->seq+1 != p->eseq) {
+			log_info("FIN with invalid SEQ, %u (%u expected)\n", hdr->seq, p->eseq-1);
 			return;
 		}
-		if (hdr->ack != p->syn_seq) {
-			log_info("FIN with invalid ACK\n");
+		if (hdr->ack != p->syn_ack) {
+			log_info("FIN with invalid ACK, %u (%u expected)\n", hdr->ack, p->syn_ack);
 			return;
 		}
 		log_info("Received duplicated FIN, resending FINACK...\n");
@@ -79,14 +79,15 @@ static void protocol_last_ack(void *ml, void *data, int rw) {
 
 	if (hdr->flags & HDR_ACK) {
 		if (hdr->seq != p->eseq) {
-			log_info("FIN with invalid SEQ\n");
+			log_info("LAST ACK with invalid SEQ\n");
 			return;
 		}
-		if (hdr->ack != p->syn_seq) {
-			log_info("FIN with invalid ACK\n");
+		if (hdr->ack != p->syn_ack+1) {
+			log_info("LAST ACK with invalid ACK\n");
 			return;
 		}
 		log_info("Received ACK, connection terminated...\n");
+		p->state = CLOSED;
 		p->ccb(p, 1);
 	}
 }
@@ -131,14 +132,15 @@ static void protocol_data_callback(void *ml, void *data, int rw) {
 
 	if (hdr->flags & HDR_FIN) {
 		if (hdr->seq != p->eseq) {
-			log_info("FIN with invalid SEQ\n");
+			log_info("FIN with invalid SEQ, %u (%u expected)\n", hdr->seq, p->eseq);
 			return;
 		}
-		if (hdr->ack != p->syn_seq) {
-			log_info("FIN with invalid ACK\n");
+		if (hdr->ack != p->syn_ack) {
+			log_info("FIN with invalid ACK, %u (%u expected)\n", hdr->ack, p->syn_ack);
 			return;
 		}
 		log_info("Received FIN, terminating connection...\n");
+		p->eseq++;
 		make_header(hdr->ack, p->eseq, HDR_ACK|HDR_FIN, 0,
 		    hdr->tsopt, s);
 		p->send(p->fd, s, sizeof(*hdr), p->send_flags);
