@@ -216,13 +216,13 @@ void timer_queue_push(struct timeval tv) {
         timer_queue_tail = timer_queue_front;
     }
     temp = timer_queue_front;
-    for(; temp != NULL; temp = temp->next) {
+    /*for(; temp != NULL; temp = temp->next) {
         printf("[DEBUG] timer set: %d s, %d us; delay: %d s, %d us\n", 
                 (int)temp->set_time.tv_sec,
                 (int)temp->set_time.tv_usec,
                 (int)temp->delay.tv_sec,
                 (int)temp->delay.tv_usec);
-    }
+    }*/
 }
 
 struct timer_info * timer_queue_pop() {
@@ -233,7 +233,6 @@ struct timer_info * timer_queue_pop() {
 
     return temp;
 }
- 
 
 int main(int argc, char * const *argv) {
 
@@ -700,6 +699,7 @@ handshake_2nd:
                                     it.it_value = tv1;
                                     setitimer(ITIMER_REAL, &it, NULL);
                                 }
+
                                 timer_queue_push(tv1);
 
                                 sli_window_index = sli_window_index + 1;
@@ -740,21 +740,29 @@ handshake_2nd:
                                 }
                                 printf("\t[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[window_start % config_serv.sli_win_sz].seq);
                                 // alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
-                                struct timeval cur, tv1, delta;
+
+                                struct timeval tv1, delta;
                                 tv1.tv_sec = rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt) / 1000;
                                 tv1.tv_usec = (rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt) % 1000) * 1000;
 
-                                if(gettimeofday(&cur, NULL) < 0) {
-                                    my_err_quit("gettimeofday error");
+                                struct timer_info * timer1 = timer_queue_pop(), * timer2 = timer1->next;
+                                if(timer2 != NULL) {
+                                    delta.tv_sec = timer2->set_time.tv_sec + timer2->set_time.tv_sec \
+                                                   - timer1->set_time.tv_sec - timer1->delay.tv_sec;
+                                    delta.tv_usec = timer2->set_time.tv_usec + timer2->set_time.tv_usec \
+                                                    - timer1->set_time.tv_usec - timer1->delay.tv_usec;
+                                } else {
+                                    delta = tv1;
                                 }
-                                timer_queue_push(tv1);
-
-                                struct timer_info * timer_ = timer_queue_pop();
-                                delta.tv_sec = cur.tv_sec + tv1.tv_sec \
-                                               - timer_->set_time.tv_sec - timer_->delay.tv_sec;
-                                delta.tv_usec = cur.tv_usec + tv1.tv_usec \
-                                               - timer_->set_time.tv_usec - timer_->delay.tv_usec;
-                                printf("[DEBUG] delta: %d s, %d us\n", (int)delta.tv_sec, (int)delta.tv_usec);
+                                if(delta.tv_sec >= 3) {
+                                    delta.tv_sec = 3;
+                                    delta.tv_usec = 0;
+                                }
+                                if(delta.tv_sec < 1) {
+                                    delta.tv_sec = 1;
+                                    delta.tv_usec = 0;
+                                }
+                                log_debug("[DEBUG] delta: %d s, %d us\n", (int)delta.tv_sec, (int)delta.tv_usec);
                                 struct timeval tv2;
                                 tv2.tv_sec = tv2.tv_usec = 0;
                                 struct itimerval it;
@@ -762,7 +770,9 @@ handshake_2nd:
                                 it.it_value = delta;
                                 setitimer(ITIMER_REAL, &it, NULL);
 
-                                free(timer_);
+                                timer_queue_push(tv1);
+
+                                free(timer1);
                             }
                             else {
                                 printf("\n[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);

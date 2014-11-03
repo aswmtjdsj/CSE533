@@ -47,6 +47,8 @@ b. after receiving each valid ACK from client, server will update RTO of several
     which are in the sender sliding window, sent but not acked.
 c. During the 3-step handshake procedure, due to the insufficient timestamp information,
     we apply a simple timeout mechanism, which repetively try from 3 seconds timeout to 12 seconds
+d. Due to SIG_ALRM is not stacked or queued, we apply a timer-queue to simulate the SIG_ALRM queu
+    by calculating the difference of continuous alarm, here we use setitimer to generate SIG_ALRM
 
 4. ARQ mechanism
 =============
@@ -105,12 +107,6 @@ the real sender sliding window size would be the smaller one of (Maximum sender
 slding window size, receiver advertised sliding window size and congetsion window size)
 
 when a congestion is detected, namely TIMEOUT happended, the window decreased half of its size
-
-c. fast retransmit:
-----------------
-
-d. fast recovery:
---------------
 
 6. End-of-connection notification
 ==============================

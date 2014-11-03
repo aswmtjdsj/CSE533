@@ -339,7 +339,7 @@ void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
     ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2); 
     ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 
-    //rtt_debug(ptr);
+    // rtt_debug(ptr);
 }
 
 int rtt_timeout(struct rtt_info * ptr) {
