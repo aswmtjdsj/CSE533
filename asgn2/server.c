@@ -332,7 +332,7 @@ int main(int argc, char * const *argv) {
             printf("[INFO] Current active children:\n");
             struct child_info * temp_pt = child_info_list;
             for( ; temp_pt != NULL;) {
-                printf("\t child #%u with initial SYN #%u\n", temp_pt->pid, temp_pt->syn_init);
+                printf("\t child #%u with initial SYN #%u\n", (uint32_t)temp_pt->pid, temp_pt->syn_init);
                 temp_pt = temp_pt->next;
             }
         }
@@ -378,7 +378,7 @@ int main(int argc, char * const *argv) {
                 for( ; temp_pt != NULL; ) {
                     if(temp_pt->syn_init == recv_hdr.seq) {
                         printf("\n[INFO] Duplicate SYN #%u detected\n", temp_pt->syn_init);
-                        printf("\n[INFO] Send alarm of retransmission to corresponding child #%u\n", temp_pt->pid);
+                        printf("\n[INFO] Send alarm of retransmission to corresponding child #%u\n", (uint32_t)temp_pt->pid);
                         found = 1;
                         kill(temp_pt->pid, SIGALRM);
                         break;
@@ -837,7 +837,7 @@ syn_to_client:
                     goto finish_all;
 
                 } else {
-                    printf("[INFO] Server child #%u forked!\n", child_pid);
+                    printf("[INFO] Server child #%u forked!\n", (uint32_t)child_pid);
 
                     // insert the new child with its init syn into list
                     struct child_info * cur_child = malloc(sizeof(struct child_info));
