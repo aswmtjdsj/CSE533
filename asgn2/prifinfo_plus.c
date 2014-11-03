@@ -10,7 +10,6 @@ typedef unsigned char u_char;
 int
 main(int argc, char **argv)
 {
-	struct ifi_info *ifi, *ifihead;
 	int family, doaliases;
 
 	if (argc != 3)
