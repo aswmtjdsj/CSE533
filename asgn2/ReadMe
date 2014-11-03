@@ -1,7 +1,7 @@
 0. {name: Xiang Yu; ID: 109417626;}; {name: Yuxuan Shui; ID: 109955038;}
 
 1.
-the structure for storing the information of each socket
+the structure for storing the information of each socket:
 --->in utils.h
 struct sock_info_aux {
     int sock_fd;
@@ -11,8 +11,10 @@ struct sock_info_aux {
 };
 
 2.
-unicast
-TODO
+strictly unicast only:
+--->in server.c
+we didn't bind ifi->ifi_braddr or something else
+we only bind ifi->ifi_addr, which are unicast address
 
 3.
 RTT mechanism
@@ -40,7 +42,15 @@ ARQ mechanism
 //
 
 5.
-// other mechanism
+other mechanism of adding reliability
+a. slow start:
+//
+b. congestion avoidance:
+//
+c. fast retransmit:
+//
+d. fast recovery:
+//
 
 6.
 // last notice

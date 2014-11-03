@@ -164,6 +164,11 @@ void parse_dgram(uint8_t * dgram, struct tcp_header * hdr, void * payload, int r
 struct sliding_window * sli_win;
 uint32_t sli_win_sz, window_start, window_end, sent_not_ack, adv_win_sz, avail_win_sz;
 
+/*
+ * slow start: congestion window
+ */
+int cwnd;
+
 void build_window(uint32_t size) {
     // sender available empty window size
     // receiver advertisez window size
@@ -222,6 +227,9 @@ int main(int argc, char * const *argv) {
 
     // sliding window
     sli_win = NULL;
+
+    // congestion window
+    cwnd = 1;
 
     // get configuration
     printf("[CONFIG]\n");
@@ -541,6 +549,8 @@ handshake_2nd:
                     // update window size according to advertised client receiver window size
                     sli_win_sz = (config_serv.sli_win_sz < recv_hdr.window_size)?config_serv.sli_win_sz:recv_hdr.window_size;
                     printf("[INFO] After receiver advertising, sender sliding window size: %u\n", sli_win_sz);
+                    sli_win_sz = (sli_win_sz < cwnd) ? sli_win_sz : cwnd;
+                    printf("[INFO] But due to the need of slow start, sender sliding window size is modified to: %u\n", sli_win_sz);
 
                     FILE * data_file = fopen(filename, "r");
                     if(data_file == NULL) {
@@ -694,12 +704,13 @@ handshake_2nd:
                                 // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
                                 int move_forward = recv_hdr.ack - sli_win[window_start % config_serv.sli_win_sz].seq;
                                 if(move_forward <= 0) {
-                                    printf("Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
+                                    printf("[INFO] Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
                                             recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
                                     continue;
                                 }
 
                                 last_client_seq = recv_hdr.seq;
+
 
                                 printf("[DEBUG] move forward: %d\n", move_forward);
                                 int num;
@@ -717,6 +728,11 @@ handshake_2nd:
                                 sli_win_sz = (sli_win_sz + avail_win_sz > recv_hdr.window_size) ?\
                                              recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
+                                printf("[INFO] after comparing the client acknowledged receiver window size and server's sender window size, sliding window has been modified to be %d\n", sli_win_sz);
+                                cwnd *= 2;
+                                printf("[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
+                                sli_win_sz = (sli_win_sz < cwnd)? sli_win_sz : cwnd;
+                                printf("[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
                                 printf("[DEBUG] window start: %u - sent not ack: %u - window end: %u, current sliding window size: %u\n", \
                                         window_start, sent_not_ack, window_end, sli_win_sz);
 
