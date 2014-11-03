@@ -192,9 +192,10 @@ void destroy_window() {
 /*
  * for RTT timer queue
  */
-struct timer_info * timer_queue;
+struct timer_info * timer_queue_front, * timer_queue_tail;
+
 void timer_queue_init() {
-    timer_queue = NULL;
+    timer_queue_front = timer_queue_tail = NULL;
 }
 
 void timer_queue_push(struct timeval tv) {
@@ -206,19 +207,29 @@ void timer_queue_push(struct timeval tv) {
 	    my_err_quit("gettimeofday error");
 	}
 
-    if(timer_queue != NULL) {
-        timer_queue->next = temp;
+    if(timer_queue_front != NULL) {
+        timer_queue_tail->next = temp;
+        timer_queue_tail = timer_queue_tail->next;
     }
     else {
-        timer_queue = temp;
+        timer_queue_front = temp;
+        timer_queue_tail = timer_queue_front;
+    }
+    temp = timer_queue_front;
+    for(; temp != NULL; temp = temp->next) {
+        printf("[DEBUG] timer set: %d s, %d us; delay: %d s, %d us\n", 
+                (int)temp->set_time.tv_sec,
+                (int)temp->set_time.tv_usec,
+                (int)temp->delay.tv_sec,
+                (int)temp->delay.tv_usec);
     }
 }
 
 struct timer_info * timer_queue_pop() {
 
-    struct timer_info * temp = timer_queue;
+    struct timer_info * temp = timer_queue_front;
 
-    timer_queue = timer_queue->next;
+    timer_queue_front = timer_queue_front->next;
 
     return temp;
 }
@@ -681,7 +692,7 @@ handshake_2nd:
                                 tv1.tv_sec = rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt) / 1000;
                                 tv1.tv_usec = (rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt) % 1000) * 1000;
 
-                                if(timer_queue == NULL) {
+                                if(timer_queue_front == NULL) {
                                     struct timeval tv2;
                                     tv2.tv_sec = tv2.tv_usec = 0;
                                     struct itimerval it;
@@ -743,6 +754,7 @@ handshake_2nd:
                                                - timer_->set_time.tv_sec - timer_->delay.tv_sec;
                                 delta.tv_usec = cur.tv_usec + tv1.tv_usec \
                                                - timer_->set_time.tv_usec - timer_->delay.tv_usec;
+                                printf("[DEBUG] delta: %d s, %d us\n", (int)delta.tv_sec, (int)delta.tv_usec);
                                 struct timeval tv2;
                                 tv2.tv_sec = tv2.tv_usec = 0;
                                 struct itimerval it;
