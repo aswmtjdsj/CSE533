@@ -136,6 +136,14 @@ struct sliding_window {
     int data_sz;
     uint32_t seq;
     struct rtt_info rtt;
+    int ack_times;
+};
+
+// timer queue
+struct timer_info {
+    struct timer_info * next;
+    struct timeval set_time;
+    struct timeval delay;
 };
 
 #endif

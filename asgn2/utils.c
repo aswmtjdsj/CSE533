@@ -283,8 +283,9 @@ void rtt_debug(struct rtt_info * ptr) {
 
 void rtt_init(struct rtt_info * ptr) {
 	struct timeval tv;
+
 	if(gettimeofday(&tv, NULL) < 0) {
-		my_err_quit("gettimeofday error");
+	    my_err_quit("gettimeofday error");
 	}
 
 	/* # msec since 1/1/1970 at start */
@@ -299,8 +300,9 @@ void rtt_init(struct rtt_info * ptr) {
 uint32_t rtt_ts(struct rtt_info * ptr) {
 	uint32_t ts;
 	struct timeval tv;
+
 	if(gettimeofday(&tv, NULL) < 0) {
-		my_err_quit("gettimeofday error");
+	    my_err_quit("gettimeofday error");
 	}
 
 	ts = ((tv.tv_sec - ptr->rtt_base) * 1000) + (tv. tv_usec / 1000);
@@ -314,7 +316,8 @@ void rtt_newpack(struct rtt_info * ptr) {
 }
 
 int rtt_start(struct rtt_info * ptr) {
-	return ptr->rtt_rto / 1000;
+	// return ptr->rtt_rto / 1000;
+	return ptr->rtt_rto;
 	/* return value can be used as: alarm(rtt_start(&foo)) */
 }
 

@@ -189,6 +189,41 @@ void destroy_window() {
     }
 }
 
+/*
+ * for RTT timer queue
+ */
+struct timer_info * timer_queue;
+void timer_queue_init() {
+    timer_queue = NULL;
+}
+
+void timer_queue_push(struct timeval tv) {
+    struct timer_info * temp = malloc(sizeof(struct timer_info));
+    temp->next = NULL;
+    temp->delay = tv;
+
+	if(gettimeofday(&temp->set_time, NULL) < 0) {
+	    my_err_quit("gettimeofday error");
+	}
+
+    if(timer_queue != NULL) {
+        timer_queue->next = temp;
+    }
+    else {
+        timer_queue = temp;
+    }
+}
+
+struct timer_info * timer_queue_pop() {
+
+    struct timer_info * temp = timer_queue;
+
+    timer_queue = timer_queue->next;
+
+    return temp;
+}
+ 
+
 int main(int argc, char * const *argv) {
 
     // server configuration
@@ -231,6 +266,9 @@ int main(int argc, char * const *argv) {
 
     // congestion window
     cwnd = 1;
+
+    // for RTT timer
+    timer_queue_init();
 
     // get configuration
     read_serv_conf(&config_serv);
@@ -595,6 +633,7 @@ handshake_2nd:
                                                                     sli_win[(sli_window_index - 1 + config_serv.sli_win_sz) % config_serv.sli_win_sz].seq + 1;
                                 }
                                 rtt_init(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
+                                sli_win[sli_window_index % config_serv.sli_win_sz].ack_times = 0;
                                 window_end = sli_window_index; // update window end
                                 sli_window_index = sli_window_index + 1;
 
@@ -628,7 +667,6 @@ handshake_2nd:
                                         sli_win[sli_window_index % config_serv.sli_win_sz].data_sz,
                                         &sent_size); /* TODO */ /* ARQ */
 
-
                                 if((sent_size = send(conn_fd, send_dgram, sent_size, send_flag/*, cli_addr, cli_len*/)) < 0) {
                                     my_err_quit("send error");
                                 }
@@ -638,7 +676,20 @@ handshake_2nd:
                                 rtt_newpack(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt);
 
                                 printf("\t[INFO] Gonna emit the RTT timer for datagram with SEQ %u\n", sli_win[sli_window_index % config_serv.sli_win_sz].seq);
-                                alarm(rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt));
+                                // alarm(rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt));
+                                struct timeval tv1;
+                                tv1.tv_sec = rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt) / 1000;
+                                tv1.tv_usec = (rtt_start(&sli_win[sli_window_index % config_serv.sli_win_sz].rtt) % 1000) * 1000;
+
+                                if(timer_queue == NULL) {
+                                    struct timeval tv2;
+                                    tv2.tv_sec = tv2.tv_usec = 0;
+                                    struct itimerval it;
+                                    it.it_interval = tv2;
+                                    it.it_value = tv1;
+                                    setitimer(ITIMER_REAL, &it, NULL);
+                                }
+                                timer_queue_push(tv1);
 
                                 sli_window_index = sli_window_index + 1;
                                 num++;
@@ -677,7 +728,29 @@ handshake_2nd:
                                     printf("\n[INFO] TIMEOUT, but retransmision disabled! So, do nothing!\n");
                                 }
                                 printf("\t[INFO] Gonna re-emit the RTT timer for datagram with SEQ %u\n", sli_win[window_start % config_serv.sli_win_sz].seq);
-                                alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
+                                // alarm(rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt)); // set retransmission for newly retransmitted dgram
+                                struct timeval cur, tv1, delta;
+                                tv1.tv_sec = rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt) / 1000;
+                                tv1.tv_usec = (rtt_start(&sli_win[window_start % config_serv.sli_win_sz].rtt) % 1000) * 1000;
+
+                                if(gettimeofday(&cur, NULL) < 0) {
+                                    my_err_quit("gettimeofday error");
+                                }
+                                timer_queue_push(tv1);
+
+                                struct timer_info * timer_ = timer_queue_pop();
+                                delta.tv_sec = cur.tv_sec + tv1.tv_sec \
+                                               - timer_->set_time.tv_sec - timer_->delay.tv_sec;
+                                delta.tv_usec = cur.tv_usec + tv1.tv_usec \
+                                               - timer_->set_time.tv_usec - timer_->delay.tv_usec;
+                                struct timeval tv2;
+                                tv2.tv_sec = tv2.tv_usec = 0;
+                                struct itimerval it;
+                                it.it_interval = tv2;
+                                it.it_value = delta;
+                                setitimer(ITIMER_REAL, &it, NULL);
+
+                                free(timer_);
                             }
                             else {
                                 printf("\n[ERROR] Retransmission time-out reaches the limit of retransmission time: %d, giving up...\n", RTT_MAXNREXMT);
@@ -698,6 +771,7 @@ handshake_2nd:
                                 printf("[INFO] ACK for last datagram received!\n");
                                 break;
                             }
+
                             cwnd++;
                             printf("\n[INFO] ACK received and congestion isn't detected, so cwnd +1 -> %d\n", cwnd);
 
@@ -709,10 +783,14 @@ handshake_2nd:
                                     retrans_flag = 0;
                                 }
                             } else { // should enable retransmission
+                                // if dup ack
+                                // fast retransmit
+                                // if(recv_hdr.ack <
+
                                 // if dup ack, then update window when ack is valid
                                 // window slide forward
-                                // int move_foward = ((recv_hdr.ack + config_serv.sli_win_sz) % config_serv.sli_win_sz) - window_start;
                                 int move_forward = recv_hdr.ack - sli_win[window_start % config_serv.sli_win_sz].seq;
+
                                 if(move_forward <= 0) {
                                     printf("\n[INFO] Received dgram ack #%u is smaller than the \"sent but not ack-ed\" dgram seq #%u, ack dropped\n", \
                                             recv_hdr.ack, sli_win[window_start % config_serv.sli_win_sz].seq);
