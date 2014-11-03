@@ -167,6 +167,7 @@ uint32_t sli_win_sz, window_start, window_end, sent_not_ack, adv_win_sz, avail_w
 /*
  * slow start: congestion window
  */
+#define SSTHRESH 64
 int cwnd;
 
 void build_window(uint32_t size) {
@@ -734,8 +735,12 @@ handshake_2nd:
                                              recv_hdr.window_size : sli_win_sz + avail_win_sz;
 
                                 printf("\n[INFO] after comparing the client acknowledged receiver window size and server's sender window size, sliding window has been modified to be %d\n", sli_win_sz);
-                                cwnd *= 2;
-                                printf("\n[INFO] last window of data successfully acknowledged, congestion window doubled: %d\n", cwnd);
+                                if(cwnd < SSTHRESH) {
+                                    cwnd *= 2;
+                                } else {
+                                    cwnd++;
+                                }
+                                printf("\n[INFO] last window of data successfully acknowledged, congestion window doubled: %u\n", cwnd);
                                 sli_win_sz = (sli_win_sz < cwnd)? sli_win_sz : cwnd;
                                 printf("\n[INFO] according to congestion window size, the real sliding window size for next window of data should be %d\n", sli_win_sz);
                                 log_debug("\n[DEBUG][A] read_size: %d | window start: %u | sent not ack: %u | window end: %u | current sliding window size: %u | available window size: %u\n", 
