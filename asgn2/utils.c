@@ -316,7 +316,6 @@ void rtt_newpack(struct rtt_info * ptr) {
 int rtt_start(struct rtt_info * ptr) {
 	return ptr->rtt_rto / 1000;
 	/* return value can be used as: alarm(rtt_start(&foo)) */
-	/* should be change to in second */
 }
 
 void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
@@ -337,7 +336,7 @@ void rtt_stop(struct rtt_info * ptr, uint32_t ms) {
     ptr->rtt_rttvar += ((delta - ptr->rtt_rttvar) >> 2); 
     ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 
-    rtt_debug(ptr);
+    //rtt_debug(ptr);
 }
 
 int rtt_timeout(struct rtt_info * ptr) {
