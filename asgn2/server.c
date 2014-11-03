@@ -823,6 +823,11 @@ syn_to_client:
                                         0,
                                         &sent_size);
                                 log_info("\t[DEBUG] Sent datagram size: %d\n", sent_size);
+
+                                if((sent_size = sendto(conn_fd, send_dgram, sent_size, send_flag, 
+                                                cli_addr, cli_len)) < 0) {
+                                    my_err_quit("sendto error");
+                                }
                                 break;
                             }
                         }
