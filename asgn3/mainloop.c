@@ -260,6 +260,14 @@ void fd_set_cb(void *fh, fd_cb cb){
 	fd->cb = cb;
 }
 
+void fd_set_data(void *fh, void *data){
+	((struct fd *)fh)->data = data;
+}
+
+int fd_get_fd(void *fh) {
+	return ((struct fd *)fh)->fd;
+}
+
 void timer_set_cb(void *th, timer_cb cb){
 	struct timer *t = th;
 	t->cb = cb;

@@ -6,7 +6,7 @@ client_LIBS = -lm -lrt
 server_OBJS = server.o utils.o
 OBJS = $(prifinfo_plus_OBJS) $(client_OBJS) $(server_OBJS)
 UNAME := $(shell uname -s)
-CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
+CFLAGS = -g -DLOG_LEVEL=8 -Wall -Wno-unused-function
 ifeq ($(UNAME),SunOS)
 	LIBS += -lnsl -lsocket -lresolv
 	client_CFLAGS += -D_REENTRANT

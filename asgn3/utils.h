@@ -69,4 +69,5 @@ static inline void dump_lladdr(struct sockaddr_ll *addr){
 	log_info("\n");
 }
 
+const char *sa_ntop(struct sockaddr *, char **, size_t *);
 #endif

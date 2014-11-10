@@ -17,5 +17,7 @@ void timer_add(struct timeval *, const struct timeval *);
 void timespec_substract(struct timespec *, const struct timespec *);
 void timer_substract(struct timeval *, const struct timeval *);
 void fd_set_cb(void *, fd_cb);
+void fd_set_data(void *, void *);
+int fd_get_fd(void *);
 void timer_set_cb(void *, timer_cb);
 #endif
