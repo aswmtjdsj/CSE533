@@ -15,7 +15,7 @@ void log_cb(void *ml, void *data, int rw) {
 	char buf[1024];
 	recv(cdata->fd, buf, sizeof(buf), MSG_PEEK);
 	int x = 0;
-	while(buf[x] != '\n')
+	while(buf[x] != '\n' && buf[x])
 		x++;
 	read(cdata->fd, buf, x+1);
 
