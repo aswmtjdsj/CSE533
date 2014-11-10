@@ -3,12 +3,13 @@
 
 struct odr_hdr {
 	uint32_t bid;
-	uint32_t ipaddr;
+	uint32_t saddr;
+	uint32_t daddr;
 	uint16_t flags;
 	uint16_t payload_len;
 };
 
-CASSERT(sizeof(struct odr_hdr) != 12, odr_hdr_size);
+CASSERT(sizeof(struct odr_hdr) != 16, odr_hdr_size);
 
 #define ODR_FLAG(n)	(1<<(n))
 #define ODR_RREQ	ODR_FLAG(0)
