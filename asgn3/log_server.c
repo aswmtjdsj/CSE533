@@ -9,15 +9,23 @@
 struct client {
 	struct sockaddr_in caddr;
 	int fd;
+	void *fh;
 };
 void log_cb(void *ml, void *data, int rw) {
 	struct client *cdata = data;
 	char buf[1024];
-	recv(cdata->fd, buf, sizeof(buf), MSG_PEEK);
+	int ret = recv(cdata->fd, buf, sizeof(buf), MSG_PEEK);
+	if (ret == 0) {
+		close(cdata->fd);
+		fd_remove(ml, cdata->fh);
+		return;
+	}
 	int x = 0;
+	buf[ret] = 0;
 	while(buf[x] != '\n' && buf[x])
 		x++;
-	read(cdata->fd, buf, x+1);
+	ret = read(cdata->fd, buf, x+1);
+	buf[x+1] = 0;
 
 	static char *tmp = NULL;
 	static size_t len = 0;
@@ -30,7 +38,7 @@ void listen_cb(void *ml, void *data, int rw) {
 	socklen_t clen = sizeof(nc->caddr);
 	int cfd = accept(sockfd, (struct sockaddr *)&nc->caddr, &clen);
 	nc->fd = cfd;
-	fd_insert(ml, cfd, FD_READ, log_cb, nc);
+	nc->fh = fd_insert(ml, cfd, FD_READ, log_cb, nc);
 }
 int main(int argc, const char **argv) {
 	if(argc < 2) {

@@ -16,3 +16,5 @@ CASSERT(sizeof(struct odr_hdr) != 16, odr_hdr_size);
 #define ODR_RREP	ODR_FLAG(1)
 #define ODR_RREP_SENT	ODR_FLAG(2)
 #define ODR_HAS_DATA	ODR_FLAG(3)
+
+#define ODR_MAGIC	0xF00D
