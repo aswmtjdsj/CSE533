@@ -44,7 +44,7 @@ static void
 _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 	assert(sockfd >= 0);
 	void *sinptr;
-	int len;
+	size_t len;
 	ifi->ifi_flags = flags;
 	memcpy(ifi->ifi_name, ifr->ifr_name, IFI_NAME);
 	ifi->ifi_name[IFI_NAME-1] = '\0';
@@ -54,7 +54,6 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 		ifi->ifi_addr = calloc(1, sizeof(struct sockaddr_in));
 		len = sizeof(struct sockaddr_in);
 		memcpy(ifi->ifi_addr, sinptr, sizeof(struct sockaddr_in));
-#ifdef	SIOCGIFBRDADDR
 		if (flags & IFF_BROADCAST) {
 			if (!ioctl(sockfd, SIOCGIFBRDADDR, ifr)) {
 				sinptr = (struct sockaddr_in *)
@@ -63,7 +62,6 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 				memcpy(ifi->ifi_brdaddr, sinptr, len);
 			}
 		}
-#endif
 #ifdef	SIOCGIFDSTADDR
 		if (flags & IFF_POINTOPOINT) {
 			if (!ioctl(sockfd, SIOCGIFDSTADDR, ifr)) {
@@ -74,13 +72,11 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 			}
 		}
 #endif
-#ifdef  SIOCGIFNETMASK
 		if (!ioctl(sockfd, SIOCGIFNETMASK, ifr)) {
 			sinptr = (struct sockaddr_in *) &ifr->ifr_addr;
 			ifi->ifi_ntmaddr = calloc(1, len);
 			memcpy(ifi->ifi_ntmaddr, sinptr, len);
 		}
-#endif
 			break;
 
 	case AF_INET6:
@@ -105,10 +101,14 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 	}
 
 	ifi->ifi_mtu = 0;
-#if defined(SIOCGIFMTU)
 	if (!ioctl(sockfd, SIOCGIFMTU, ifr))
 		ifi->ifi_mtu = ifr->ifr_metric;
-#endif
+	if (!ioctl(sockfd, SIOCGIFHWADDR, ifr)) {
+		struct sockaddr_ll *lladdr = (void *)&ifr->ifr_hwaddr;
+		len = sizeof(struct sockaddr_ll);
+		memcpy(ifi->ifi_hwaddr, lladdr->sll_addr, len);
+		ifi->ifi_halen = lladdr->sll_halen;
+	}
 }
 
 struct ifi_info *
@@ -189,19 +189,21 @@ get_ifi_info(int family, int doaliases) {
 }
 
 void
-free_ifi_info(struct ifi_info *ifihead)
+free_ifi_info(struct ifi_info *ifihead, int deep)
 {
 	struct ifi_info	*ifi, *ifinext;
 
 	for (ifi = ifihead; ifi != NULL; ifi = ifinext) {
-		if (ifi->ifi_addr != NULL)
-			free(ifi->ifi_addr);
-		if (ifi->ifi_brdaddr != NULL)
-			free(ifi->ifi_brdaddr);
-		if (ifi->ifi_dstaddr != NULL)
-			free(ifi->ifi_dstaddr);
-		if (ifi->ifi_ntmaddr != NULL)
-			free(ifi->ifi_ntmaddr);
+		if (deep) {
+			if (ifi->ifi_addr != NULL)
+				free(ifi->ifi_addr);
+			if (ifi->ifi_brdaddr != NULL)
+				free(ifi->ifi_brdaddr);
+			if (ifi->ifi_dstaddr != NULL)
+				free(ifi->ifi_dstaddr);
+			if (ifi->ifi_ntmaddr != NULL)
+				free(ifi->ifi_ntmaddr);
+		}
 
 		ifinext = ifi->ifi_next;
 		free(ifi);
@@ -247,7 +249,7 @@ void dump_ifi_info(int family, int doaliases) {
 			log_info("\tdestination addr: %s\n",
 			    sa_ntop(sa, &tmp, &len));
 	}
-	free_ifi_info(ifihead);
+	free_ifi_info(ifihead, 1);
 }
 
 void info_print(const char * fmt, ...) {

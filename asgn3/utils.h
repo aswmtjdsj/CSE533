@@ -19,16 +19,18 @@
 #define IFI_ALIAS	1	/* ifi_addr is an alias */
 
 struct ifi_info {
-  char   ifi_name[IFI_NAME];	/* interface name, null-terminated */
-  int    ifi_index;		/* interface index */
-  int    ifi_mtu;		/* interface MTU */
-  short  ifi_flags;		/* IFF_xxx constants from <net/if.h> */
-  short  ifi_myflags;		/* our own IFI_xxx flags */
-  struct sockaddr  *ifi_addr;	/* primary address */
-  struct sockaddr  *ifi_brdaddr;/* broadcast address */
-  struct sockaddr  *ifi_dstaddr;/* destination address */
-  struct sockaddr  *ifi_ntmaddr;/* netmask address */
-  struct ifi_info  *ifi_next;	/* next of these structures */
+  char   ifi_name[IFI_NAME];		/* interface name, null-terminated */
+  int    ifi_index;			/* interface index */
+  int    ifi_mtu;			/* interface MTU */
+  short  ifi_flags;			/* IFF_xxx constants from <net/if.h> */
+  short  ifi_myflags;			/* our own IFI_xxx flags */
+  struct sockaddr	*ifi_addr;	/* primary address */
+  struct sockaddr	*ifi_brdaddr;	/* broadcast address */
+  struct sockaddr	*ifi_dstaddr;	/* destination address */
+  struct sockaddr	*ifi_ntmaddr;	/* netmask address */
+  uint8_t		ifi_hwaddr[8];	/* hardware address */
+  short			ifi_halen;	/* hardware address length*/
+  struct ifi_info	*ifi_next;	/* next of these structures */
 };
 
 static inline void __attribute__((noreturn))
@@ -79,3 +81,5 @@ void error_print(const char *, ...);
 
 void my_err_quit(const char * /* error info */);
 #endif
+void free_ifi_info(struct ifi_info *ifihead, int deep);
+struct ifi_info * get_ifi_info(int family, int doaliases);
