@@ -6,12 +6,6 @@
 #include "skiplist.h"
 #include "utils.h"
 #include "log.h"
-struct msg {
-	uint16_t flags;
-	uint16_t len;
-	void *buf;
-	struct msg *next;
-};
 struct odr_protocol {
 	int fd;
 	int max_idx;
