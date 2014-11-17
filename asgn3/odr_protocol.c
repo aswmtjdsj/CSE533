@@ -8,7 +8,6 @@
 #include "log.h"
 struct msg {
 	uint16_t flags;
-	uint64_t stale;
 	uint16_t len;
 	void *buf;
 	struct msg *next;
@@ -17,11 +16,12 @@ struct odr_protocol {
 	int fd;
 	int max_idx;
 	void *buf;
-	size_t buf_len;
+	size_t buf_len, msg_len;
 	void *fh;
 	data_cb cb;
 	uint32_t myip;
 	uint64_t bid;
+	uint64_t stale;
 	struct skip_list_head *route_table;
 	struct skip_list_head *known_hosts;
 	struct ifi_info *ifi_table;
@@ -62,7 +62,8 @@ get_timestamp(void) {
 	return t;
 }
 static inline int
-send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg) {
+send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
+		   int direct) {
 	struct odr_hdr *hdr = msg->buf;
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &hdr->daddr, addr_cmp);
@@ -72,9 +73,12 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg) {
 
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
 	uint64_t now = get_timestamp();
-	if ((msg->flags & ODR_MSG_STALE) &&
-	    re->timestamp+msg->stale<now)
-		//Route entry too old
+	if ((msg->flags & ODR_MSG_STALE) && !direct)
+		//Force rediscovery
+		return 0;
+
+	if (re->timestamp+op->stale < now)
+		//Route stale
 		return 0;
 
 	//Send it out!
@@ -96,7 +100,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg) {
 }
 static inline int
 send_msg(struct odr_protocol *op, struct msg *msg) {
-	int ret = send_msg_dontqueue(op, msg);
+	int ret = send_msg_dontqueue(op, msg, 0);
 	if (ret)
 		return ret;
 
@@ -105,7 +109,6 @@ send_msg(struct odr_protocol *op, struct msg *msg) {
 	op->pending_msgs = msg;
 	return 0;
 }
-
 static inline void
 route_table_update(struct odr_protocol *op, uint32_t daddr,
 		   uint32_t hop_count, struct sockaddr_ll *addr) {
@@ -169,23 +172,27 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 				    op->ifi_table[i].ifi_name);
 		}
 
-	}
-
-	//Then check op->pending_msgs to send out all message we can send
-	struct msg *tmp = op->pending_msgs;
-	struct msg **nextp = &op->pending_msgs;
-	while(tmp) {
-		int ret = send_msg_dontqueue(op, tmp);
-		if (ret) {
-			//Succeeded
-			*nextp = tmp->next;
-			free(tmp->buf);
-			free(tmp);
-			tmp = *nextp;
-		} else {
-			//Failed
-			nextp = &tmp->next;
-			tmp = tmp->next;
+		//Then check op->pending_msgs to send out all
+		//message we can send
+		struct msg *tmp = op->pending_msgs;
+		struct msg **nextp = &op->pending_msgs;
+		while(tmp) {
+			struct odr_hdr *hdr = tmp->buf;
+			if (hdr->daddr != daddr)
+				//Not the route we updated
+				continue;
+			int ret = send_msg_dontqueue(op, tmp, 1);
+			if (ret) {
+				//Succeeded
+				*nextp = tmp->next;
+				free(tmp->buf);
+				free(tmp);
+				tmp = *nextp;
+			} else {
+				//Failed
+				nextp = &tmp->next;
+				tmp = tmp->next;
+			}
 		}
 	}
 }
@@ -205,11 +212,10 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr->flags = ODR_RREP;
 		xhdr->saddr = op->myip;
 		xhdr->daddr = hdr->saddr;
-		xhdr->bid = op->bid;
 		xhdr->hop_count = 0;
 		nm->len = sizeof(struct odr_hdr);
 
-		int ret = send_msg_dontqueue(op, nm);
+		int ret = send_msg_dontqueue(op, nm, 0);
 		if (!ret)
 			log_warning("Can't find route for RREP, IMPOSSIBLE\n");
 		return;
@@ -219,7 +225,41 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
 	if (!res || re->dst_ip != hdr->daddr) {
 		//Not found
+		int i;
+		struct sockaddr_ll lladdr;
+		hdr->hop_count++;
+		for(i=0; i<op->max_idx; i++) {
+			//Broadcast to all interfaces
+			if (!op->ifi_table[i].ifi_flags & IFF_UP)
+				continue;
+			if (i == addr->sll_ifindex)
+				continue;
+			memcpy(lladdr.sll_addr,
+			    op->ifi_table[i].ifi_hwaddr,
+			    sizeof(struct sockaddr_ll));
+			lladdr.sll_ifindex = i;
+			lladdr.sll_halen = op->ifi_table[i].ifi_halen;
+			int ret = sendto(op->fd, op->buf, op->msg_len,
+			    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
+			if (ret < 0)
+				log_warning("Failed to send packet via %s: %s",
+				   op->ifi_table[i].ifi_name, strerror(errno));
+		}
 	} else {
+		struct msg *nm = calloc(1, sizeof(struct msg));
+		struct odr_hdr *xhdr = NULL;
+		nm->buf = calloc(1, sizeof(struct odr_hdr));
+		xhdr = nm->buf;
+		xhdr->daddr = hdr->saddr;
+		xhdr->saddr = hdr->daddr;
+		xhdr->hop_count = re->hop_count;
+		xhdr->flags = ODR_RREP;
+		nm->len = sizeof(struct odr_hdr);
+
+		int ret = send_msg_dontqueue(op, nm, 0);
+		if (!ret)
+			log_warning("Can't find route for RREP, IMPOSSIBLE\n");
+		return;
 	}
 }
 static inline void
@@ -227,9 +267,36 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
 
+	if (hdr->daddr != op->myip) {
+		//Route the RREP
+		hdr->hop_count++;
+		struct msg *msg = calloc(1, sizeof(struct msg));
+		msg->len = op->msg_len;
+		msg->flags = 0;
+		msg->buf = malloc(msg->len);
+		memcpy(msg->buf, op->buf, msg->len);
+		//Send, possibly queueing it
+		send_msg(op, msg);
+	}
 }
 static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
+	struct odr_hdr *hdr = op->buf;
+	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
+
+	if (hdr->daddr != op->myip) {
+		//Route the packet
+		hdr->hop_count++;
+		struct msg *msg = calloc(1, sizeof(struct msg));
+		msg->len = op->msg_len;
+		msg->flags = 0;
+		msg->buf = malloc(msg->len);
+		memcpy(msg->buf, op->buf, msg->len);
+		//Send, possibly queueing it
+		send_msg(op, msg);
+	} else
+		//Deliver the packet
+		op->cb((void *)(hdr+1));
 }
 
 static inline void
@@ -262,6 +329,7 @@ void odr_read_cb(void *ml, void *data, int rw){
 	enlarge_buffer(op, ret);
 	ret = recvfrom(op->fd, op->buf, op->buf_len, 0,
 	    (struct sockaddr *)&addr, &len);
+	op->msg_len = ret;
 	log_info("Packet coming in from %d\n", addr.sll_ifindex);
 
 	struct odr_hdr *hdr = op->buf;
@@ -272,7 +340,8 @@ void odr_read_cb(void *ml, void *data, int rw){
 	if (hdr->flags & ODR_DATA)
 		data_handler(op, &addr);
 }
-void odr_protocol_init(void *ml, data_cb cb, struct ifi_info *head) {
+void odr_protocol_init(void *ml, data_cb cb, int stale,
+		       struct ifi_info *head) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
 	struct odr_protocol *op = malloc(sizeof(struct odr_protocol));
 	op->fd = sockfd;
@@ -280,6 +349,7 @@ void odr_protocol_init(void *ml, data_cb cb, struct ifi_info *head) {
 	op->buf = NULL;
 	op->cb = cb;
 	op->buf_len = 0;
+	op->stale = stale;
 
 	struct ifi_info *tmp = head;
 	int max_idx = 0;
