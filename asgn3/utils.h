@@ -57,6 +57,18 @@ static inline void chomp(char *inout){
 	}
 }
 
+static inline const char *
+mac_tostring(const uint8_t *addr, int len) {
+	static char buf[30];
+	int pos = 0, i;
+	if (len <= 0 || len > 10)
+		return NULL;
+	pos+=sprintf(buf, "%02X", addr[0]);
+	for(i=0; i<len; i++)
+		pos+=sprintf(buf+pos, ":%02X", addr[i]);
+	return buf;
+}
+
 static inline void dump_lladdr(struct sockaddr_ll *addr){
 	log_info("\nDump ll address info:\n");
 	log_info("\tProtocol number: %04X\n", ntohs(addr->sll_protocol));
