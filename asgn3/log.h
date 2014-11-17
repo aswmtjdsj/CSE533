@@ -2,6 +2,7 @@
 #define __LOG_H__
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <string.h>

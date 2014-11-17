@@ -60,6 +60,8 @@ int main(int argc, char * const *argv) {
     // server vm id
     int dest_id = -1;
     struct hostent * dest_host;
+    char * tmp_str;
+    int addr_len;
 
     log_info("Client is goint to create UNIX Domain socket!\n");
 
@@ -126,7 +128,7 @@ int main(int argc, char * const *argv) {
     }
 
 SELECT_LABLE:
-    log_info("Select a server node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
+    log_info("Select a server (destination) node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
     switch((dest_id = handle_input())) {
         case -1:
             log_err("Invalid Command!\n");
@@ -138,10 +140,11 @@ SELECT_LABLE:
             break;
         default:
             sprintf(dest_host_name, "vm%d", dest_id);
-            log_info("%s selected!\n", dest_host_name);
+            log_info("<%s> selected!\n", dest_host_name);
             break;
     }
 
+    // get dest host by name
     if((dest_host = gethostbyname(dest_host_name)) == NULL) {
         switch(h_errno) {
             case HOST_NOT_FOUND:
@@ -158,13 +161,25 @@ SELECT_LABLE:
                 log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
                 break;
         }
-        goto EVERYTHING_DONE;
+        log_info("Please go back to select another server/destination node.\n");
+        goto SELECT_LABLE;
     }
+
+    // get host ip by host_ent structure
+    log_debug("[DEBUG] server (canonical) ip: %s", sa_ntop(dest_host->h_addr_list[0], &tmp_str, &addr_len));
+    log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
+
+    // send and receive message
+
+    // if all go on well and finished, then go back to promption
+    log_info("Current work done! Go back to destination selection!\n");
+    goto SELECT_LABLE;
 
 EVERYTHING_DONE:
     // garbage collection
     log_info("All work done!\n");
-    log_info("Cleaning resources!\n");
+    log_info("Cleaning resources ...\n");
     unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
+    log_info("Quit now!\n");
     return 0;
 }
