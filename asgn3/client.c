@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <sys/un.h>
 #include <netdb.h>
+#include <ctype.h>
 
 #include "utils.h"
 #include "log.h"
@@ -43,12 +44,12 @@ int handle_input() {
 
 int main(int argc, char * const *argv) {
 
-    info_print("This is a time client!\n");
+    log_info("This is a time client!\n");
 
     // unix domain socket descriptor
     int sock_un_fd;
     // socket structure length
-    int sock_len;
+    socklen_t sock_len;
     // client address
     struct sockaddr_un cli_addr, cli_addr_info, dest_addr;
     // path template for mkstemp to use
@@ -60,7 +61,7 @@ int main(int argc, char * const *argv) {
     int dest_id = -1;
     struct hostent * dest_host;
 
-    info_print("Client is goint to create UNIX Domain socket!\n");
+    log_info("Client is goint to create UNIX Domain socket!\n");
 
     if(mkstemp(cli_sun_path) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
@@ -69,7 +70,7 @@ int main(int argc, char * const *argv) {
     // before first use, we should unlink it
     unlink(cli_sun_path);
     path_len = strlen(cli_sun_path);
-    
+
     log_debug("Client created a temporary sun path: %s\n", cli_sun_path);
 
     // create unix domain socket
@@ -87,53 +88,74 @@ int main(int argc, char * const *argv) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("bind error");
     }
-    
+
     // after binding, get sock info
     sock_len = sizeof(cli_addr_info);
     if(getsockname(sock_un_fd, (struct sockaddr *) &cli_addr_info, &sock_len) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("getsockname error");
     }
-    info_print("Client unix domain socket created, socket sun path: %s, socket structure size: %u\n", cli_addr_info.sun_path, (unsigned int) sock_len);
-    
+    log_info("Client unix domain socket created, socket sun path: %s, socket structure size: %u\n", cli_addr_info.sun_path, (unsigned int) sock_len);
+
     // get local host
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("gethostname error");
     }
-    info_print("Current node: %s\n", local_host_name);
+    log_info("Current node: %s\n", local_host_name);
+
+    int cmd_fd;
+    if (argc>=3) {
+        //Was supplied with a command server to connect to
+        struct sockaddr_in cmdaddr;
+        int ret = inet_pton(AF_INET, argv[1], &cmdaddr.sin_addr);
+        int port = atoi(argv[2]);
+        cmdaddr.sin_port = htons(port);
+        cmdaddr.sin_family = AF_INET;
+        if (ret) {
+        cmd_fd = socket(AF_INET, SOCK_STREAM, 0);
+        ret = connect(cmd_fd,(struct sockaddr *)&cmdaddr,sizeof(cmdaddr));
+        if (ret != 0)
+            log_info("Failed to connect to cmd server: "
+                    "%s\n", strerror(errno));
+        } else {
+            write(cmd_fd, local_host_name, strlen(local_host_name));
+            fflush(stdin);
+            dup2(cmd_fd, fileno(stdin));
+        }
+    }
 
 SELECT_LABLE:
-    info_print("Select a server node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
+    log_info("Select a server node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
     switch((dest_id = handle_input())) {
         case -1:
-            err_print("Invalid Command!\n");
+            log_err("Invalid Command!\n");
             goto SELECT_LABLE;
             break;
         case 0:
-            warn_print("Quit command detected!\n");
+            log_warn("Quit command detected!\n");
             goto EVERYTHING_DONE;
             break;
         default:
             sprintf(dest_host_name, "vm%d", dest_id);
-            info_print("%s selected!\n", dest_host_name);
+            log_info("%s selected!\n", dest_host_name);
             break;
     }
 
     if((dest_host = gethostbyname(dest_host_name)) == NULL) {
         switch(h_errno) {
             case HOST_NOT_FOUND:
-                err_print("Destination host %s not found!\n", dest_host_name);
+                log_err("Destination host %s not found!\n", dest_host_name);
                 break;
             case NO_ADDRESS:
             // case NO_DATA:
-                err_print("Destination host %s is valid, but does not have an IP address!\n", dest_host_name);
+                log_err("Destination host %s is valid, but does not have an IP address!\n", dest_host_name);
                 break;
             case NO_RECOVERY:
-                err_print("A nonrecoverable name server error occurred.!\n");
+                log_err("A nonrecoverable name server error occurred.!\n");
                 break;
             case TRY_AGAIN:
-                err_print("A temporary error occurred on an authoritative name server. Try again later.\n");
+                log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
                 break;
         }
         goto EVERYTHING_DONE;
@@ -141,8 +163,8 @@ SELECT_LABLE:
 
 EVERYTHING_DONE:
     // garbage collection
-    warn_print("All work done!\n");
-    warn_print("Cleaning resources!\n");
+    log_info("All work done!\n");
+    log_info("Cleaning resources!\n");
     unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
     return 0;
 }

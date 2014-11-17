@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <netinet/in.h>
 
+#define LOG_LEVEL 10
+
 /*
  * debug = 9
  * info = 8
@@ -17,23 +19,27 @@
  * none = 0
  */
 
-#if LOG_LEVEL >= 9
-#define log_debug(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define log_debug(...)
-#endif
+int color_print(int log_level, const char *prefix, const char *postfix,
+		const char *fmt, ...) {
+	if (log_level > LOG_LEVEL)
+		return 0;
+	fputs(prefix, stderr);
+	va_list args;
+	va_start(args, fmt);
+	int ret = vfprintf(stderr, fmt, args);
+	va_end(args);
+	fputs(postfix, stderr);
+	return ret;
+}
 
-#if LOG_LEVEL >= 8
-#define log_info(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define log_info(...)
-#endif
-
-#if LOG_LEVEL >= 7
-#define log_warning(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define log_warning(...)
-#endif
+#define log_debug(...) \
+    color_print(9, "\033[32m[DEBUG]", "\033[0m", __VA_ARGS__)
+#define log_warn(...) \
+    color_print(7, "\033[33m[WARN]", "\033[0m", __VA_ARGS__)
+#define log_err(...) \
+    color_print(6, "\033[31m[ERROR]", "\033[0m", __VA_ARGS__)
+#define log_info(...) \
+    color_print(8, "\033[32m[DEBUG]", "\033[0m", __VA_ARGS__)
 
 static inline void log_server_init(int argc, const char **argv) {
 	if (argc < 3)

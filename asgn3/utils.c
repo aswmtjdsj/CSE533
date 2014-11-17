@@ -252,50 +252,8 @@ void dump_ifi_info(int family, int doaliases) {
 	free_ifi_info(ifihead, 1);
 }
 
-void info_print(const char * fmt, ...) {
-#ifdef ENABLE_COLOR
-    printf("\033[32m");
-#endif
-    printf("[INFO] ");
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
-#ifdef ENABLE_COLOR
-    printf("\033[0m");
-#endif
-}
-
-void warn_print(const char * fmt, ...) { 
-#ifdef ENABLE_COLOR
-    printf("\033[33m");
-#endif
-    printf("[WARNING] ");
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
-#ifdef ENABLE_COLOR
-    printf("\033[0m");
-#endif
-}
-
-void err_print(const char * fmt, ...) { 
-#ifdef ENABLE_COLOR
-    printf("\033[31m");
-#endif
-    printf("[ERROR] ");
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
-#ifdef ENABLE_COLOR
-    printf("\033[0m");
-#endif
-}
-
 void my_err_quit(const char * prompt) {
-    err_print("%s: %s\n", prompt, strerror(errno));
+    log_err("%s: %s\n", prompt, strerror(errno));
     exit(EXIT_FAILURE);
 }
 /* vim: set noexpandtab tabstop=8: */

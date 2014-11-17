@@ -73,12 +73,6 @@ static inline void dump_lladdr(struct sockaddr_ll *addr){
 
 const char *sa_ntop(struct sockaddr *, char **, size_t *);
 
-#define ENABLE_COLOR
-
-void info_print(const char *, ...);
-void warn_print(const char *, ...);
-void error_print(const char *, ...);
-
 void my_err_quit(const char * /* error info */);
 #endif
 void free_ifi_info(struct ifi_info *ifihead, int deep);
