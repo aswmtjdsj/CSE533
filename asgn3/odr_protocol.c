@@ -98,8 +98,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 	}
 	return 1;
 }
-static inline int
-send_msg(struct odr_protocol *op, struct msg *msg) {
+int send_msg(struct odr_protocol *op, struct msg *msg) {
 	int ret = send_msg_dontqueue(op, msg, 0);
 	if (ret)
 		return ret;
