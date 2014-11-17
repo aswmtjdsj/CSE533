@@ -46,7 +46,7 @@ get_timestamp(void) {
 	struct timespec ts;
 	int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
 	if (ret < 0) {
-		log_warning("clock_gettime failed !!! %s\n",
+		log_warn("clock_gettime failed !!! %s\n",
 		    strerror(errno));
 		exit(1);
 	}
@@ -87,7 +87,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 	int ret = sendto(op->fd, msg->buf, msg->len, 0,
 	    (struct sockaddr *)&lladdr, sizeof(lladdr));
 	if (ret < 0) {
-		log_warning("Failed to send packet\n");
+		log_warn("Failed to send packet\n");
 		return 0;
 	}
 	return 1;
@@ -161,7 +161,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 			int ret = sendto(op->fd, buf, sizeof(struct odr_hdr),
 			    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
 			if (ret < 0)
-				log_warning("Failed to send packet via %s",
+				log_warn("Failed to send packet via %s",
 				    op->ifi_table[i].ifi_name);
 		}
 
@@ -210,7 +210,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 		int ret = send_msg_dontqueue(op, nm, 0);
 		if (!ret)
-			log_warning("Can't find route for RREP, IMPOSSIBLE\n");
+			log_warn("Can't find route for RREP, IMPOSSIBLE\n");
 		return;
 	}
 	struct skip_list_head *res =
@@ -235,7 +235,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 			int ret = sendto(op->fd, op->buf, op->msg_len,
 			    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
 			if (ret < 0)
-				log_warning("Failed to send packet via %s: %s",
+				log_warn("Failed to send packet via %s: %s",
 				   op->ifi_table[i].ifi_name, strerror(errno));
 		}
 	} else {
@@ -251,7 +251,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 		int ret = send_msg_dontqueue(op, nm, 0);
 		if (!ret)
-			log_warning("Can't find route for RREP, IMPOSSIBLE\n");
+			log_warn("Can't find route for RREP, IMPOSSIBLE\n");
 		return;
 	}
 }
@@ -309,7 +309,7 @@ void odr_read_cb(void *ml, void *data, int rw){
 	    (struct sockaddr *)&addr, &len);
 
 	if (ret < 0) {
-		log_warning("Failed to recvfrom(), %s\n",
+		log_warn("Failed to recvfrom(), %s\n",
 		    strerror(errno));
 		return;
 	}
@@ -317,7 +317,7 @@ void odr_read_cb(void *ml, void *data, int rw){
 	int mtu = op->ifi_table[addr.sll_ifindex].ifi_mtu;
 	log_info("Packet coming in from %d\n", addr.sll_ifindex);
 	if (ret > mtu && mtu)
-		log_warning("Packet larger than mtu (%d>%d)\n",
+		log_warn("Packet larger than mtu (%d>%d)\n",
 		    ret, mtu);
 	enlarge_buffer(op, ret);
 	ret = recvfrom(op->fd, op->buf, op->buf_len, 0,
@@ -355,7 +355,7 @@ void odr_protocol_init(void *ml, data_cb cb, int stale,
 	tmp = head;
 	while(tmp) {
 		if (op->ifi_table[tmp->ifi_index].ifi_name[0])
-			log_warning("Duplicated interface, shouldn't use"
+			log_warn("Duplicated interface, shouldn't use"
 			    " doalias\n");
 		if (strcmp(tmp->ifi_name, "eth0")) {
 			log_info("Ignoring eth0 (but recording the ip)\n");

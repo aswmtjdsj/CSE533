@@ -52,12 +52,12 @@ int main(int argc, const char **argv) {
 	addr.sin_port = htons(atoi(argv[1]));
 	int ret = bind(sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {
-		log_warning("Failed to bind(): %s\n", strerror(errno));
+		log_warn("Failed to bind(): %s\n", strerror(errno));
 		return 1;
 	}
 	ret = listen(sockfd, 0);
 	if (ret < 0) {
-		log_warning("Failed to listen(): %s\n", strerror(errno));
+		log_warn("Failed to listen(): %s\n", strerror(errno));
 		return 1;
 	}
 

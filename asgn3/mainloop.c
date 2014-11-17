@@ -179,7 +179,7 @@ void timer_elapse(struct mainloop *ml, struct timespec *_elapse) {
 		}
 		count++;
 		if (!(count & 255))
-			log_warning("More than %d timer event fired at once,"
+			log_warn("More than %d timer event fired at once,"
 				"this could potentially cause starve!!\n", count);
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		timespec_substract(&end, &start);

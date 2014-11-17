@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <stdarg.h>
 
 #define LOG_LEVEL 10
 
@@ -19,6 +20,7 @@
  * none = 0
  */
 
+static inline
 int color_print(int log_level, const char *prefix, const char *postfix,
 		const char *fmt, ...) {
 	if (log_level > LOG_LEVEL)

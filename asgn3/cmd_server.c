@@ -28,7 +28,7 @@ void register_cb(void *ml, void *data, int rw) {
 	}
 	char *tmp = strchr(buf, ' ');
 	if (tmp) {
-		log_warning("Invalid name, contaions space\n");
+		log_warn("Invalid name, contaions space\n");
 		return;
 	}
 	memcpy(cdata->name, buf, ret);
@@ -52,7 +52,7 @@ void cmd_cb(void *ml, void *data, int rw) {
 	chomp(cmd);
 	char *name2 = strchr(cmd, ' ');
 	if (!name2) {
-		log_warning("Invalid command\n");
+		log_warn("Invalid command\n");
 		return;
 	}
 	*name2=0;
@@ -63,12 +63,12 @@ void cmd_cb(void *ml, void *data, int rw) {
 		t = t->next;
 	}
 	if (!t) {
-		log_warning("Client %s not found\n", cmd);
+		log_warn("Client %s not found\n", cmd);
 		return;
 	}
 	int ret = write(t->fd, name2, strlen(name2));
 	if (ret < 0)
-		log_warning("Failed to send command: %s\n",
+		log_warn("Failed to send command: %s\n",
 		    strerror(errno));
 }
 int main(int argc, const char **argv) {
@@ -83,12 +83,12 @@ int main(int argc, const char **argv) {
 	addr.sin_port = htons(atoi(argv[1]));
 	int ret = bind(sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {
-		log_warning("Failed to bind(): %s\n", strerror(errno));
+		log_warn("Failed to bind(): %s\n", strerror(errno));
 		return 1;
 	}
 	ret = listen(sockfd, 0);
 	if (ret < 0) {
-		log_warning("Failed to listen(): %s\n", strerror(errno));
+		log_warn("Failed to listen(): %s\n", strerror(errno));
 		return 1;
 	}
 
