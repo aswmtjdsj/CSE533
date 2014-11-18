@@ -49,9 +49,9 @@ int main(int argc, char * const *argv) {
     // unix domain socket descriptor
     int sock_un_fd;
     // socket structure length
-    socklen_t sock_len;
+    socklen_t sock_len = 0;
     // client address
-    struct sockaddr_un cli_addr, cli_addr_info, dest_addr;
+    struct sockaddr_un cli_addr, cli_addr_info;//, dest_addr;
     // path template for mkstemp to use
     char cli_sun_path[100] = "client_xiangyu_XXXXXX";
     int path_len = 0;
@@ -61,7 +61,7 @@ int main(int argc, char * const *argv) {
     int dest_id = -1;
     struct hostent * dest_host;
     char * tmp_str;
-    int addr_len;
+    size_t addr_len = 0;
 
     log_info("Client is goint to create UNIX Domain socket!\n");
 
@@ -106,8 +106,8 @@ int main(int argc, char * const *argv) {
     }
     log_info("Current node: %s\n", local_host_name);
 
-    int cmd_fd;
-    if (argc>=3) {
+    /*if (argc>=3) {
+        int cmd_fd;
         //Was supplied with a command server to connect to
         struct sockaddr_in cmdaddr;
         int ret = inet_pton(AF_INET, argv[1], &cmdaddr.sin_addr);
@@ -115,17 +115,17 @@ int main(int argc, char * const *argv) {
         cmdaddr.sin_port = htons(port);
         cmdaddr.sin_family = AF_INET;
         if (ret) {
-        cmd_fd = socket(AF_INET, SOCK_STREAM, 0);
-        ret = connect(cmd_fd,(struct sockaddr *)&cmdaddr,sizeof(cmdaddr));
-        if (ret != 0)
-            log_info("Failed to connect to cmd server: "
-                    "%s\n", strerror(errno));
+            cmd_fd = socket(AF_INET, SOCK_STREAM, 0);
+            ret = connect(cmd_fd,(struct sockaddr *)&cmdaddr,sizeof(cmdaddr));
+            if (ret != 0)
+                log_info("Failed to connect to cmd server: "
+                        "%s\n", strerror(errno));
         } else {
             write(cmd_fd, local_host_name, strlen(local_host_name));
             fflush(stdin);
             dup2(cmd_fd, fileno(stdin));
         }
-    }
+    }*/
 
 SELECT_LABLE:
     log_info("Select a server (destination) node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
@@ -161,15 +161,16 @@ SELECT_LABLE:
                 log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
                 break;
         }
-        log_info("Please go back to select another server/destination node.\n");
+        log_warn("Please go back to select another server/destination node.\n");
         goto SELECT_LABLE;
     }
 
     // get host ip by host_ent structure
-    log_debug("[DEBUG] server (canonical) ip: %s", sa_ntop(dest_host->h_addr_list[0], &tmp_str, &addr_len));
+    log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *)(dest_host->h_addr_list[0]), &tmp_str, &addr_len));
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
 
     // send and receive message
+    // TODO
 
     // if all go on well and finished, then go back to promption
     log_info("Current work done! Go back to destination selection!\n");

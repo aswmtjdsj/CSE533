@@ -36,13 +36,13 @@ int color_print(int log_level, const char *prefix, const char *postfix,
 }
 
 #define log_debug(...) \
-    color_print(9, "\033[32m[DEBUG]", "\033[0m", __VA_ARGS__)
+    color_print(9, "\033[34m[DEBUG] ", "\033[0m", __VA_ARGS__)
 #define log_warn(...) \
-    color_print(7, "\033[33m[WARN]", "\033[0m", __VA_ARGS__)
+    color_print(7, "\033[33m[WARNING] ", "\033[0m", __VA_ARGS__)
 #define log_err(...) \
-    color_print(6, "\033[31m[ERROR]", "\033[0m", __VA_ARGS__)
+    color_print(6, "\033[31m[ERROR] ", "\033[0m", __VA_ARGS__)
 #define log_info(...) \
-    color_print(8, "\033[32m[DEBUG]", "\033[0m", __VA_ARGS__)
+    color_print(8, "\033[32m[INFO] ", "\033[0m", __VA_ARGS__)
 
 static inline void log_server_init(int argc, const char **argv) {
 	if (argc < 3)
