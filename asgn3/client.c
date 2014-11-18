@@ -2,7 +2,7 @@
 
 int handle_input() {
     // input command
-    char input_c[20];
+    char input_c[INPUT_BUF_MAX_LEN];
     int char_cnt = 0;
     int ret_value = 0;
     while(isalnum(input_c[char_cnt] = getchar())) {
@@ -46,10 +46,10 @@ int main(int argc, char * const *argv) {
     struct sockaddr_un cli_addr, cli_addr_info;
     struct sockaddr_in * dest_addr = NULL;
     // path template for mkstemp to use
-    char cli_sun_path[100] = "client_xiangyu_XXXXXX";
+    char cli_sun_path[SUN_PATH_MAX_LEN] = "client_xiangyu_XXXXXX";
     int path_len = 0;
     // local host name and dest name
-    char local_host_name[32], dest_host_name[32], * dest_ip;
+    char local_host_name[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip;
     // server vm id
     int dest_id = -1;
     struct hostent * dest_host;
@@ -75,7 +75,7 @@ int main(int argc, char * const *argv) {
 
     memset(&cli_addr, 0, sizeof(struct sockaddr_un));
     cli_addr.sun_family = AF_LOCAL;
-    strncpy(cli_addr.sun_path, cli_sun_path, strlen(cli_sun_path));
+    strncpy(cli_addr.sun_path, cli_sun_path, path_len);
     cli_addr.sun_path[path_len] = 0;
 
     if(bind(sock_un_fd, (struct sockaddr *) &cli_addr, sizeof(cli_addr)) < 0) {
@@ -89,13 +89,15 @@ int main(int argc, char * const *argv) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("getsockname error");
     }
-    log_info("Client unix domain socket created, socket sun path: %s, socket structure size: %u\n", cli_addr_info.sun_path, (unsigned int) sock_len);
+
+    log_debug("Client unix domain socket created, socket sun path: %s, socket structure size: %u\n", cli_addr_info.sun_path, (unsigned int) sock_len);
 
     // get local host
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("gethostname error");
     }
+
     log_info("Current node: %s\n", local_host_name);
 
     /*if (argc>=3) {
@@ -163,6 +165,7 @@ SELECT_LABLE:
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
 
     // send and receive message
+    // TODO: timeout mechanism
     if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", NON_REDISCOVER) < 0) {
         // TODO
     }

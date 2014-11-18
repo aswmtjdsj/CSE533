@@ -11,9 +11,13 @@
 #include "msg_api.h"
 #include "mainloop.h"
 
+#define HOST_NAME_MAX_LEN 32
+#define INPUT_BUF_MAX_LEN 20
+
 #define ODR_SUN_PATH "ODR_path_xiangyu"
 #define TIM_SERV_SUN_PATH "time_path_xiangyu"
 #define TIM_SERV_PORT 19326
+#define SUN_PATH_MAX_LEN 100
 
 #define EN_REDISCOVER 1
 #define NON_REDISCOVER 0
