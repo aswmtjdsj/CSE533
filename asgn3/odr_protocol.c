@@ -36,7 +36,7 @@ struct route_entry {
 	uint64_t timestamp;
 	uint32_t hop_count;
 };
-int addr_cmp(struct skip_list_head *h, const void *b) {
+static int addr_cmp(struct skip_list_head *h, const void *b) {
 	struct route_entry *re = skip_list_entry(h, struct route_entry, h);
 	const int *bb = b;
 	return re->dst_ip-(*bb);
@@ -112,6 +112,7 @@ dump_odr_hdr(struct odr_hdr *hdr) {
 	log_debug("\tBroadcast ID (only makes sense for RREQ): %d\n",
 	    hdr->bid);
 }
+static inline
 int send_msg(struct odr_protocol *op, struct msg *msg) {
 	int ret = send_msg_dontqueue(op, msg, 0);
 	if (ret)
@@ -121,6 +122,24 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	msg->next = op->pending_msgs;
 	op->pending_msgs = msg;
 	return 0;
+}
+int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
+		 const char *buf, size_t len, int flags) {
+	struct msg *msg = calloc(1, sizeof(struct msg));
+	msg->flags = flags;
+	msg->len = len+sizeof(struct odr_hdr);
+	msg->buf = malloc(msg->len);
+
+	struct odr_hdr *hdr = msg->buf;
+	hdr->flags = ODR_DATA;
+	hdr->daddr = dst_ip;
+	hdr->saddr = op->myip;
+	hdr->bid = 0;
+	hdr->payload_len = len;
+	hdr->hop_count = 0;
+	memcpy((void *)(hdr+1), buf, len);
+
+	return send_msg(op, msg);
 }
 static inline void
 route_table_update(struct odr_protocol *op, uint32_t daddr,
