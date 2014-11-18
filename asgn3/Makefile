@@ -2,10 +2,11 @@ CC = gcc
 LIBS = -lrt
 log_server_OBJS = log_server.o mainloop.o utils.o
 cmd_server_OBJS = cmd_server.o mainloop.o utils.o
-client_OBJS = client.o utils.o
+time_client_OBJS = client.o utils.o
+time_server_OBJS = server.o utils.o
 odr_server_OBJS = odr_server.o
-OBJS = $(log_server_OBJS) $(cmd_server_OBJS) $(client_OBJS) $(odr_server_OBJS)
-BINARIES = log_server odr_server cmd_server client
+OBJS = $(log_server_OBJS) $(cmd_server_OBJS) $(time_client_OBJS) $(time_server_OBJS) $(odr_server_OBJS)
+BINARIES = log_server odr_server cmd_server time_client time_server
 CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
 
 all: $(OBJS) $(BINARIES)
@@ -21,7 +22,10 @@ log_server: $(log_server_OBJS)
 cmd_server: $(cmd_server_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-client: $(client_OBJS)
+time_client: $(time_client_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+time_server: $(time_server_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 odr_server: $(odr_server_OBJS)
