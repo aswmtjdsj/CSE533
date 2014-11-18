@@ -63,7 +63,7 @@ int main(int argc, char * const *argv) {
     char * tmp_str;
     size_t addr_len = 0;
 
-    log_info("Client is goint to create UNIX Domain socket!\n");
+    log_info("Client is going to create UNIX Domain socket!\n");
 
     if(mkstemp(cli_sun_path) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO

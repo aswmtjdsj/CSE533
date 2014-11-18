@@ -1,5 +1,5 @@
 CC = gcc
-LIBS = 
+LIBS = -lrt
 log_server_OBJS = log_server.o mainloop.o utils.o
 cmd_server_OBJS = cmd_server.o mainloop.o utils.o
 client_OBJS = client.o utils.o
