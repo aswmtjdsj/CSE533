@@ -387,7 +387,7 @@ enlarge_buffer(struct odr_protocol *op, size_t s) {
 	op->buf_len = s;
 }
 
-void odr_read_cb(void *ml, void *data, int rw){
+static void odr_read_cb(void *ml, void *data, int rw){
 	struct odr_protocol *op = data;
 	int ret;
 	struct sockaddr_ll addr;
