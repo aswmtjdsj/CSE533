@@ -17,5 +17,5 @@ struct msg {
 typedef void (*data_cb)(void *data);
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
 		 const char *buf, size_t len, int flags);
-void odr_protocol_init(void *ml, data_cb cb, int stale,
-		       struct ifi_info *head);
+void *odr_protocol_init(void *ml, data_cb cb, int stale,
+			struct ifi_info *head);

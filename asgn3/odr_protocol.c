@@ -420,8 +420,8 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	if (hdr->flags & ODR_DATA)
 		data_handler(op, &addr);
 }
-void odr_protocol_init(void *ml, data_cb cb, int stale,
-		       struct ifi_info *head) {
+void *odr_protocol_init(void *ml, data_cb cb, int stale,
+			struct ifi_info *head) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
 	struct odr_protocol *op = malloc(sizeof(struct odr_protocol));
 	op->fd = sockfd;
@@ -462,4 +462,5 @@ void odr_protocol_init(void *ml, data_cb cb, int stale,
 		memcpy(op->ifi_table+tmp->ifi_index, tmp,
 		       sizeof(struct ifi_info));
 	}
+	return op;
 }
