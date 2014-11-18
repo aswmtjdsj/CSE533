@@ -15,4 +15,7 @@
 #define TIM_SERV_SUN_PATH "time_path_xiangyu"
 #define TIM_SERV_PORT 19326
 
+#define EN_REDISCOVER 1
+#define NON_REDISCOVER 0
+
 #endif

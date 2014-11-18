@@ -1,12 +1,4 @@
-#include <stdio.h>
-#include <sys/un.h>
-#include <netdb.h>
-#include <ctype.h>
-
-#include "utils.h"
-#include "log.h"
-#include "msg_api.h"
-#include "mainloop.h"
+#include "const.h"
 
 int handle_input() {
     // input command
@@ -51,16 +43,16 @@ int main(int argc, char * const *argv) {
     // socket structure length
     socklen_t sock_len = 0;
     // client address
-    struct sockaddr_un cli_addr, cli_addr_info;//, dest_addr;
+    struct sockaddr_un cli_addr, cli_addr_info;
+    struct sockaddr_in * dest_addr = NULL;
     // path template for mkstemp to use
     char cli_sun_path[100] = "client_xiangyu_XXXXXX";
     int path_len = 0;
     // local host name and dest name
-    char local_host_name[32], dest_host_name[32];
+    char local_host_name[32], dest_host_name[32], * dest_ip;
     // server vm id
     int dest_id = -1;
     struct hostent * dest_host;
-    char * tmp_str;
     size_t addr_len = 0;
 
     log_info("Client is going to create UNIX Domain socket!\n");
@@ -166,11 +158,14 @@ SELECT_LABLE:
     }
 
     // get host ip by host_ent structure
-    log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *)(dest_host->h_addr_list[0]), &tmp_str, &addr_len));
+    dest_addr = (struct sockaddr_in *)(dest_host->h_addr_list[0]);
+    log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *) dest_addr, &dest_ip, &addr_len));
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
 
     // send and receive message
-    // TODO
+    if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", NON_REDISCOVER) < 0) {
+        // TODO
+    }
 
     // if all go on well and finished, then go back to promption
     log_info("Current work done! Go back to destination selection!\n");
