@@ -14,7 +14,7 @@ struct co_table {
     struct co_table * next;
 };
 
-void data_callback() {
+void data_callback(void *buf, uint16_t len) {
 
 }
 

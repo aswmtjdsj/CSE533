@@ -121,6 +121,34 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	//Send failed, add to queue
 	msg->next = op->pending_msgs;
 	op->pending_msgs = msg;
+
+	//XXX And send rreq
+	log_info("No route entry found, rediscovering...\n");
+	int i;
+	struct sockaddr_ll lladdr;
+	void *buf = malloc(sizeof(struct odr_hdr));
+	struct odr_hdr *xhdr = buf, *hdr = msg->buf;
+	xhdr->daddr = hdr->daddr;
+	xhdr->saddr = op->myip;
+	xhdr->hop_count = 0;
+	xhdr->flags = htons(ODR_RREQ);
+	xhdr->bid = op->bid++;
+	xhdr->payload_len = 0;
+
+	for(i=0; i<op->max_idx; i++) {
+		//Broadcast to all interfaces
+		if (!op->ifi_table[i].ifi_flags & IFF_UP)
+			continue;
+		memcpy(lladdr.sll_addr, op->ifi_table[i].ifi_hwaddr,
+		       sizeof(struct sockaddr_ll));
+		lladdr.sll_ifindex = i;
+		lladdr.sll_halen = op->ifi_table[i].ifi_halen;
+		int ret = sendto(op->fd, buf, sizeof(struct odr_hdr),
+		    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
+		if (ret < 0)
+			log_warn("Failed to send packet via %s: %s",
+			    op->ifi_table[i].ifi_name, strerror(errno));
+	}
 	return 0;
 }
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
@@ -131,16 +159,17 @@ int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
 	msg->buf = malloc(msg->len);
 
 	struct odr_hdr *hdr = msg->buf;
-	hdr->flags = ODR_DATA;
+	hdr->flags = htons(ODR_DATA);
 	hdr->daddr = dst_ip;
 	hdr->saddr = op->myip;
 	hdr->bid = 0;
-	hdr->payload_len = len;
+	hdr->payload_len = htons(len);
 	hdr->hop_count = 0;
 	memcpy((void *)(hdr+1), buf, len);
 
 	return send_msg(op, msg);
 }
+//daddr and hop_count is in network order
 static inline void
 route_table_update(struct odr_protocol *op, uint32_t daddr,
 		   uint32_t hop_count, struct sockaddr_ll *addr) {
@@ -149,6 +178,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 	    &daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
 	int send_radv = 1;
+	hop_count = ntohs(hop_count);
 	if (!res || re->dst_ip != daddr) {
 		log_info("New route to %s through %s, hop: %d\n",
 		    inet_ntoa((struct in_addr){daddr}),
@@ -193,10 +223,10 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		lladdr.sll_protocol = htons(ODR_MAGIC);
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
-		xhdr->flags = ODR_RADV;
-		xhdr->hop_count = hop_count+1;
+		xhdr->flags = htons(ODR_RADV);
+		xhdr->hop_count = htons(hop_count+1);
 		xhdr->payload_len = 0;
-		xhdr->bid = op->bid++;
+		xhdr->bid = htons(op->bid++);
 		xhdr->daddr = 0;
 
 		log_info("Route updated, now we are advertising the new route"
@@ -262,20 +292,20 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	if (!hres) {
 		struct host_entry *he = calloc(1, sizeof(struct host_entry));
 		he->ip = hdr->saddr;
-		he->last_broadcast_id = hdr->bid;
+		he->last_broadcast_id = ntohl(hdr->bid);
 		skip_list_insert(op->known_hosts, &he->h, &hdr->saddr,
 				 addr_cmp);
 	} else {
 		struct host_entry *he = skip_list_entry(hres,
 		    struct host_entry, h);
-		if (hdr->bid <= he->last_broadcast_id) {
+		if (ntohl(hdr->bid) <= he->last_broadcast_id) {
 			log_info("Packet broadcast id is less than the last"
 			    "broadcast id recorded (%d < %d), possibly looping"
-			    "packets. discarding...\n", hdr->bid,
+			    "packets. discarding...\n", ntohl(hdr->bid),
 			    he->last_broadcast_id);
 			return;
 		} else
-			he->last_broadcast_id = hdr->bid;
+			he->last_broadcast_id = ntohl(hdr->bid);
 	}
 
 	if (hdr->daddr == op->myip) {
@@ -285,7 +315,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		struct odr_hdr *xhdr = NULL;
 		nm->buf = calloc(1, sizeof(struct odr_hdr));
 		xhdr = nm->buf;
-		xhdr->flags = ODR_RREP;
+		xhdr->flags = htons(ODR_RREP);
 		xhdr->saddr = op->myip;
 		xhdr->daddr = hdr->saddr;
 		xhdr->hop_count = 0;
@@ -304,7 +334,8 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		log_info("No route entry found, broadcasting...\n");
 		int i;
 		struct sockaddr_ll lladdr;
-		hdr->hop_count++;
+		int tmp = ntohs(hdr->hop_count);
+		hdr->hop_count = htons(tmp);
 		for(i=0; i<op->max_idx; i++) {
 			//Broadcast to all interfaces
 			if (!op->ifi_table[i].ifi_flags & IFF_UP)
@@ -332,7 +363,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr->daddr = hdr->saddr;
 		xhdr->saddr = hdr->daddr;
 		xhdr->hop_count = re->hop_count;
-		xhdr->flags = ODR_RREP;
+		xhdr->flags = htons(ODR_RREP);
 		nm->len = sizeof(struct odr_hdr);
 
 		int ret = send_msg_dontqueue(op, nm, 0);
@@ -348,7 +379,8 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
-		hdr->hop_count++;
+		int tmp = ntohs(hdr->hop_count);
+		hdr->hop_count = htons(tmp+1);
 		struct msg *msg = calloc(1, sizeof(struct msg));
 		msg->len = op->msg_len;
 		msg->flags = 0;
@@ -366,7 +398,8 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 	if (hdr->daddr != op->myip) {
 		//Route the packet
-		hdr->hop_count++;
+		int tmp = ntohs(hdr->hop_count);
+		hdr->hop_count = htons(tmp+1);
 		struct msg *msg = calloc(1, sizeof(struct msg));
 		msg->len = op->msg_len;
 		msg->flags = 0;
@@ -376,7 +409,13 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		send_msg(op, msg);
 	} else
 		//Deliver the packet
-		op->cb((void *)(hdr+1));
+		op->cb((void *)(hdr+1), ntohs(hdr->payload_len));
+}
+
+static inline void
+radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
+	struct odr_hdr *hdr = op->buf;
+	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
 }
 
 static inline void
@@ -413,12 +452,15 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	log_info("Packet coming in from %d\n", addr.sll_ifindex);
 
 	struct odr_hdr *hdr = op->buf;
-	if (hdr->flags & ODR_RREQ)
+	int flags = ntohs(hdr->flags);
+	if (flags & ODR_RREQ)
 		rreq_handler(op, &addr);
-	if (hdr->flags & ODR_RREP)
+	else if (flags & ODR_RREP)
 		rrep_handler(op, &addr);
-	if (hdr->flags & ODR_DATA)
+	else if (flags & ODR_DATA)
 		data_handler(op, &addr);
+	else if (flags & ODR_RADV)
+		radv_handler(op, &addr);
 }
 void *odr_protocol_init(void *ml, data_cb cb, int stale,
 			struct ifi_info *head) {
