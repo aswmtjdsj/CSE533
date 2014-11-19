@@ -54,6 +54,11 @@ int main(int argc, char * const *argv) {
     int dest_id = -1;
     struct hostent * dest_host;
     size_t addr_len = 0;
+    // message sending
+    int send_flag;
+    // message received
+    char * msg_recvd = NULL, * src_ip = NULL;
+    int src_port;
 
     log_info("Client is going to create UNIX Domain socket!\n");
 
@@ -166,10 +171,29 @@ SELECT_LABLE:
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
 
     // send and receive message
-    // TODO: timeout mechanism
-    if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", NON_REDISCOVER) < 0) {
-        // TODO
+    send_flag = NON_REDISCOVER;
+
+SEND_MESSAGE:
+    if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", send_flag) < 0) {
+        my_err_quit("msg_send error");
     }
+
+    // block in msg_recv
+    // TODO: timeout mechanism
+    if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
+        if(send_flag == NON_REDISCOVER) { // for the first timeout, force re-tran; otherwise, give up
+            log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
+            log_info("Gonna retransmit the reponse from <%s> to <%s>, with route-discovery flag set\n", local_host_name, dest_host->h_name);
+            send_flag = EN_REDISCOVER;
+            goto SEND_MESSAGE;
+        } else {
+            log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
+            log_err("Retransmission has reached the limit, gonna give up!\n");
+            goto SELECT_LABLE;
+        }
+    }
+
+    log_info("Client at node <%s>: received from <%s> [%s]\n", local_host_name, dest_host->h_name, msg_recvd);
 
     // if all go on well and finished, then go back to promption
     log_info("Current work done! Go back to destination selection!\n");

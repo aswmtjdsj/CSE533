@@ -1,9 +1,24 @@
+#include <time.h>
+#include <sys/time.h>
+
 #include "log.h"
 #include "mainloop.h"
 #include "const.h"
 #include "odr_protocol.h"
 
+struct co_table {
+    int port;
+    char sun_path[SUN_PATH_MAX_LEN];
+	struct timeval tv;
+	struct timeval remain_tv;
+    struct co_table * next;
+};
+
 void data_callback() {
+
+}
+
+void client_callback(void * ml, void * data, int rw) {
 
 }
 
@@ -43,20 +58,22 @@ int main(int argc, const char **argv) {
 
     // bind
     if(bind(sock_un_fd, (struct sockaddr *) &odr_addr, sizeof(odr_addr)) < 0) {
-        unlink(odr_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(odr_proc_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("bind error");
     }
 
     // after binding, get sock info
     sock_len = sizeof(odr_addr_info);
     if(getsockname(sock_un_fd, (struct sockaddr *) &odr_addr_info, &sock_len) < 0) {
-        unlink(odr_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(odr_proc_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("getsockname error");
     }
 
     log_debug("ODR Process unix domain socket created, socket sun path: %s, socket structure size: %u\n", odr_addr_info.sun_path, (unsigned int) sock_len);
 
     void * ml = mainloop_new();
+
+    void * fh = fd_insert(ml, sock_un_fd, FD_READ, client_callback, NULL);
 
     struct odr_protocol * op = odr_protocol_init(ml, data_callback, STALE_SEC, get_ifi_info(AF_INET, 0));
 

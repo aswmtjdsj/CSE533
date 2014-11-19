@@ -14,6 +14,11 @@ int main() {
     int src_port;
     char src_host_name[HOST_NAME_MAX_LEN];
 
+    // for time stamp
+    time_t a_clock;
+    struct tm * cur_time;
+    char ret_tm[MSG_MAX_LEN];
+
     log_info("Server is going to create UNIX Domain socket!\n");
     // get local host
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
@@ -54,18 +59,19 @@ int main() {
 
     // handle message
     for( ; ; ) {
-        // clear the heap mem
-        if(msg_recvd != NULL) {
-            free(msg_recvd);
-            msg_recvd = NULL;
-        }
-        if(src_ip != NULL) {
-            free(src_ip);
-            src_ip = NULL;
-        }
         if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
+            my_err_quit("msg_recv error");
         }
-        // TODO
+        // how to get host name by ip
+        log_info("server at node <%s> responding to request from <%s>\n", local_host_name, "fake");
+        time(&a_clock);
+        cur_time = localtime(&a_clock);
+        strcpy(ret_tm, asctime(cur_time));
+        ret_tm[strlen(ret_tm)-1] = 0;
+        log_debug("returned timestamp: %s\n", ret_tm);
+        if(msg_send(sock_un_fd, src_ip, src_port, ret_tm, NON_REDISCOVER) < 0) {
+            my_err_quit("msg_send error");
+        }
     }
 
 //EVERYTHING_DONE:
