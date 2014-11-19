@@ -1,6 +1,14 @@
 #ifndef MSG_API_H
 #define MSG_API_H
 
+#include <stdint.h>
+
+struct msg_hdr {
+    uint32_t dest_ip;
+    uint16_t dest_port;
+    uint16_t msg_len;
+};
+
 int msg_send(
         int /* socket fd for write */,
         char * /* 'canonical' IP for destination, in P format */,

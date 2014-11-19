@@ -1,8 +1,8 @@
 #include "const.h"
 
-const char vm_name[][5] = { "vm1", "vm2", "vm3", "vm4", "vm5", "vm6", "vm7", "vm8", "vm9", "vm10"};
+/*const char vm_name[][5] = { "vm1", "vm2", "vm3", "vm4", "vm5", "vm6", "vm7", "vm8", "vm9", "vm10"};
 
-const char vm_ip[][16] = { "130.245.156.21", "130.245.156.22", "130.245.156.23", "130.245.156.24", "130.245.156.25", "130.245.156.26", "130.245.156.27", "130.245.156.28", "130.245.156.29", "130.245.156.20"};
+const char vm_ip[][16] = { "130.245.156.21", "130.245.156.22", "130.245.156.23", "130.245.156.24", "130.245.156.25", "130.245.156.26", "130.245.156.27", "130.245.156.28", "130.245.156.29", "130.245.156.20"};*/
 
 int main() {
 
@@ -14,16 +14,16 @@ int main() {
     socklen_t sock_len = 0;
 
     /* for receiving message */
+    struct sockaddr_in src_addr;
     char * msg_recvd = NULL, src_ip[IP_P_MAX_LEN] = "0.0.0.0";
     int src_port;
-    char src_host_name[HOST_NAME_MAX_LEN] = "";
+    // char src_host_name[HOST_NAME_MAX_LEN] = "";
+    struct hostent * src_host;
 
     // for time stamp
     time_t a_clock;
     struct tm * cur_time;
     char ret_tm[MSG_MAX_LEN];
-
-    int idx;
 
     log_info("Server is going to create UNIX Domain socket!\n");
     // get local host
@@ -63,20 +63,48 @@ int main() {
 
     log_debug("Server unix domain socket created, socket sun path: %s, socket structure size: %u\n", serv_addr_info.sun_path, (unsigned int) sock_len);
 
+    log_info("Waiting for incoming requests ...\n");
     // handle message
     for( ; ; ) {
         if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
             my_err_quit("msg_recv error");
         }
+        log_debug("Message received!\n");
         // how to get host name by ip
-        for(idx = 0; idx < 10; idx++) {
+        /*for(idx = 0; idx < 10; idx++) {
             if(strcmp(vm_ip[idx], src_ip) == 0) {
-                log_debug("blabla\n");
                 strcpy(src_host_name, vm_name[idx]);
                 break;
             }
+        }*/
+        memset(&src_addr, 0, sizeof(src_addr));
+
+        log_debug("blabla\n");
+        src_addr.sin_addr.s_addr = inet_network(src_ip);
+
+        if((src_host = gethostbyaddr(&(src_addr.sin_addr), sizeof(src_addr.sin_addr), AF_INET)) == NULL) {
+            switch(h_errno) {
+                case HOST_NOT_FOUND:
+                    log_err("Source host %s is unknown!\n", src_ip);
+                    break;
+                case NO_ADDRESS:
+                    // case NO_DATA:
+                    log_err("The requested name is valid but does not have an IP address\n");
+                    break;
+                case NO_RECOVERY:
+                    log_err("A nonrecoverable name server error occurred!\n");
+                    break;
+                case TRY_AGAIN:
+                    log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
+                    break;
+            }
+            log_info("Error Occurred! Go back to wait for incoming requests ...\n");
+            continue;
         }
-        log_info("server at node <%s> responding to request from <%s>\n", local_host_name, src_host_name);
+
+        log_info("server at node <%s> responding to request from <%s>\n", local_host_name, src_host->h_name);
+        log_debug("blabla\n");
+
         time(&a_clock);
         cur_time = localtime(&a_clock);
         strcpy(ret_tm, asctime(cur_time));

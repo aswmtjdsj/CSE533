@@ -105,7 +105,7 @@ int main(int argc, char * const *argv) {
 
     log_info("Current node: %s\n", local_host_name);
 
-    /*if (argc>=3) {
+    if (argc>=3) {
         int cmd_fd;
         //Was supplied with a command server to connect to
         struct sockaddr_in cmdaddr;
@@ -124,7 +124,7 @@ int main(int argc, char * const *argv) {
             fflush(stdin);
             dup2(cmd_fd, fileno(stdin));
         }
-    }*/
+    }
 
 SELECT_LABLE:
     log_info("Select a server (destination) node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
@@ -195,6 +195,7 @@ SEND_MESSAGE:
             goto SELECT_LABLE;
         }
     }
+    log_debug("Message received!\n");
 
     log_info("Client at node <%s>: received from <%s> [%s]\n", local_host_name, dest_host->h_name, msg_recvd);
 
