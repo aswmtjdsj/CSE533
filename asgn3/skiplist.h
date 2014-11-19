@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stddef.h>
 
 #define talloc(nmem, type) calloc(nmem, sizeof(type))
 
@@ -103,7 +104,6 @@ skip_list_insert(struct skip_list_head *h, struct skip_list_head *n,
 //Find the smallest element that is greater than or equal to key.
 static inline struct skip_list_head *
 skip_list_find_ge(struct skip_list_head *h, void *key, skip_list_cmp cmp){
-	int i;
 	struct skip_list_head *hs[MAX_HEIGHT];
 	skip_list_previous(h, key, cmp, hs);
 	return hs[0]->next[0];
@@ -112,7 +112,6 @@ skip_list_find_ge(struct skip_list_head *h, void *key, skip_list_cmp cmp){
 //Find the smallest element that is less than or equal to key.
 static inline struct skip_list_head *
 skip_list_find_le(struct skip_list_head *h, void *key, skip_list_cmp cmp){
-	int i;
 	struct skip_list_head *hs[MAX_HEIGHT];
 	skip_list_previous(h, key, cmp, hs);
 	if (hs[0]->next[0] && cmp(hs[0]->next[0], key) == 0)

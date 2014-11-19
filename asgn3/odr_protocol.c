@@ -38,7 +38,7 @@ struct route_entry {
 };
 static int addr_cmp(struct skip_list_head *h, const void *b) {
 	struct route_entry *re = skip_list_entry(h, struct route_entry, h);
-	const int *bb = b;
+	const uint32_t *bb = b;
 	return re->dst_ip-(*bb);
 }
 static inline uint64_t
@@ -145,7 +145,6 @@ static inline void
 route_table_update(struct odr_protocol *op, uint32_t daddr,
 		   uint32_t hop_count, struct sockaddr_ll *addr) {
 	//Update route table from information in the packet
-	struct odr_hdr *hdr = op->buf;
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
@@ -359,6 +358,7 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		send_msg(op, msg);
 	}
 }
+
 static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;

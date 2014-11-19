@@ -5,7 +5,7 @@ struct odr_hdr {
 	uint32_t bid;
 	uint32_t saddr;
 	uint32_t daddr;
-	uint32_t flags;
+	uint16_t flags;
 	uint16_t hop_count;
 	uint16_t payload_len;
 };
