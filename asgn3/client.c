@@ -44,16 +44,16 @@ int main(int argc, char * const *argv) {
     socklen_t sock_len = 0;
     // client address
     struct sockaddr_un cli_addr, cli_addr_info;
-    struct sockaddr_in * dest_addr = NULL;
+    struct sockaddr_in dest_addr;
     // path template for mkstemp to use
     char cli_sun_path[SUN_PATH_MAX_LEN] = "client_xiangyu_XXXXXX";
     int path_len = 0;
     // local host name and dest name
-    char local_host_name[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip;
+    char local_host_name[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip = NULL;
     // server vm id
     int dest_id = -1;
     struct hostent * dest_host;
-    size_t addr_len = 0;
+    // size_t addr_len = 0;
     // message sending
     int send_flag;
     // message received
@@ -166,8 +166,12 @@ SELECT_LABLE:
 
     // get host ip by host_ent structure
     // !! bug here
-    dest_addr = (struct sockaddr_in *)(dest_host->h_addr_list[0]);
-    log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *) dest_addr, &dest_ip, &addr_len));
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sin_addr = *((struct in_addr *)(dest_host->h_addr_list[0]));
+    dest_ip = inet_ntoa(dest_addr.sin_addr);
+    // log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *) &dest_addr, &dest_ip, &addr_len));
+    log_debug("server (canonical) ip: %s\n", dest_ip);
+
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);
 
     // send and receive message

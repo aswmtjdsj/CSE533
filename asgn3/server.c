@@ -64,6 +64,7 @@ int main() {
         }
         // how to get host name by ip
         log_info("server at node <%s> responding to request from <%s>\n", local_host_name, "fake");
+        // src_host_name
         time(&a_clock);
         cur_time = localtime(&a_clock);
         strcpy(ret_tm, asctime(cur_time));
