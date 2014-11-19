@@ -165,10 +165,9 @@ SELECT_LABLE:
     }
 
     // get host ip by host_ent structure
-    // !! bug here
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_addr = *((struct in_addr *)(dest_host->h_addr_list[0]));
-    dest_ip = inet_ntoa(dest_addr.sin_addr);
+    dest_ip = inet_ntoa(dest_addr.sin_addr); // network byte order to host byte order
     // log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *) &dest_addr, &dest_ip, &addr_len));
     log_debug("server (canonical) ip: %s\n", dest_ip);
 

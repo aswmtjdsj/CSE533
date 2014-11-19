@@ -16,6 +16,7 @@
 #define HOST_NAME_MAX_LEN 32
 #define INPUT_BUF_MAX_LEN 20
 #define MSG_MAX_LEN 50
+#define IP_P_MAX_LEN 20
 
 #define ODR_SUN_PATH "ODR_path_xiangyu"
 #define TIM_SERV_SUN_PATH "time_path_xiangyu"

@@ -1,23 +1,29 @@
 #include "const.h"
 
+const char vm_name[][5] = { "vm1", "vm2", "vm3", "vm4", "vm5", "vm6", "vm7", "vm8", "vm9", "vm10"};
+
+const char vm_ip[][16] = { "130.245.156.21", "130.245.156.22", "130.245.156.23", "130.245.156.24", "130.245.156.25", "130.245.156.26", "130.245.156.27", "130.245.156.28", "130.245.156.29", "130.245.156.20"};
+
 int main() {
 
     int sock_un_fd;
     struct sockaddr_un serv_addr, serv_addr_info;
-    char local_host_name[HOST_NAME_MAX_LEN];
+    char local_host_name[HOST_NAME_MAX_LEN] = "";
     char time_serv_sun_path[SUN_PATH_MAX_LEN] = TIM_SERV_SUN_PATH;
     int path_len = 0;
     socklen_t sock_len = 0;
 
     /* for receiving message */
-    char * msg_recvd = NULL, * src_ip = NULL;
+    char * msg_recvd = NULL, src_ip[IP_P_MAX_LEN] = "0.0.0.0";
     int src_port;
-    char src_host_name[HOST_NAME_MAX_LEN];
+    char src_host_name[HOST_NAME_MAX_LEN] = "";
 
     // for time stamp
     time_t a_clock;
     struct tm * cur_time;
     char ret_tm[MSG_MAX_LEN];
+
+    int idx;
 
     log_info("Server is going to create UNIX Domain socket!\n");
     // get local host
@@ -63,13 +69,19 @@ int main() {
             my_err_quit("msg_recv error");
         }
         // how to get host name by ip
-        log_info("server at node <%s> responding to request from <%s>\n", local_host_name, "fake");
-        // src_host_name
+        for(idx = 0; idx < 10; idx++) {
+            if(strcmp(vm_ip[idx], src_ip) == 0) {
+                log_debug("blabla\n");
+                strcpy(src_host_name, vm_name[idx]);
+                break;
+            }
+        }
+        log_info("server at node <%s> responding to request from <%s>\n", local_host_name, src_host_name);
         time(&a_clock);
         cur_time = localtime(&a_clock);
         strcpy(ret_tm, asctime(cur_time));
         ret_tm[strlen(ret_tm)-1] = 0;
-        log_debug("returned timestamp: %s\n", ret_tm);
+        log_debug("returning timestamp: %s\n", ret_tm);
         if(msg_send(sock_un_fd, src_ip, src_port, ret_tm, NON_REDISCOVER) < 0) {
             my_err_quit("msg_send error");
         }
