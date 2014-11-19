@@ -13,6 +13,7 @@
 
 #define HOST_NAME_MAX_LEN 32
 #define INPUT_BUF_MAX_LEN 20
+#define MSG_MAX_LEN 30
 
 #define ODR_SUN_PATH "ODR_path_xiangyu"
 #define TIM_SERV_SUN_PATH "time_path_xiangyu"
@@ -21,5 +22,7 @@
 
 #define EN_REDISCOVER 1
 #define NON_REDISCOVER 0
+
+#define STALE_SEC 3
 
 #endif

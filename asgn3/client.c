@@ -160,6 +160,7 @@ SELECT_LABLE:
     }
 
     // get host ip by host_ent structure
+    // !! bug here
     dest_addr = (struct sockaddr_in *)(dest_host->h_addr_list[0]);
     log_debug("server (canonical) ip: %s\n", sa_ntop((struct sockaddr *) dest_addr, &dest_ip, &addr_len));
     log_info("Client at node <%s> is sending requests to server destination at <%s>\n", local_host_name, dest_host->h_name);

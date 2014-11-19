@@ -4,10 +4,15 @@ int main() {
 
     int sock_un_fd;
     struct sockaddr_un serv_addr, serv_addr_info;
-    char local_host_name[HOST_NAME_MAX_LEN], req_host_name[HOST_NAME_MAX_LEN];
+    char local_host_name[HOST_NAME_MAX_LEN];
     char time_serv_sun_path[SUN_PATH_MAX_LEN] = TIM_SERV_SUN_PATH;
     int path_len = 0;
     socklen_t sock_len = 0;
+
+    /* for receiving message */
+    char * msg_recvd = NULL, * src_ip = NULL;
+    int src_port;
+    char src_host_name[HOST_NAME_MAX_LEN];
 
     log_info("Server is going to create UNIX Domain socket!\n");
     // get local host
@@ -15,7 +20,7 @@ int main() {
         my_err_quit("gethostname error");
     }
 
-    log_info("Current node: %s\n", local_host_name);
+    log_info("Current node: <%s>\n", local_host_name);
 
     unlink(time_serv_sun_path);
     path_len = strlen(time_serv_sun_path);
@@ -48,8 +53,22 @@ int main() {
     log_debug("Server unix domain socket created, socket sun path: %s, socket structure size: %u\n", serv_addr_info.sun_path, (unsigned int) sock_len);
 
     // handle message
+    for( ; ; ) {
+        // clear the heap mem
+        if(msg_recvd != NULL) {
+            free(msg_recvd);
+            msg_recvd = NULL;
+        }
+        if(src_ip != NULL) {
+            free(src_ip);
+            src_ip = NULL;
+        }
+        if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
+        }
+        // TODO
+    }
 
-EVERYTHING_DONE:
+//EVERYTHING_DONE:
     // garbage collection
     log_info("All work done!\n");
     log_info("Cleaning resources ...\n");
