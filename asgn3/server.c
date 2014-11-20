@@ -15,7 +15,7 @@ int main() {
 
     /* for receiving message */
     struct sockaddr_in src_addr;
-    char * msg_recvd = NULL, src_ip[IP_P_MAX_LEN] = "0.0.0.0";
+    char * msg_recvd = NULL, src_ip[IP_P_MAX_LEN] = "0.0.0.0";//"130.245.156.22";
     int src_port;
     // char src_host_name[HOST_NAME_MAX_LEN] = "";
     struct hostent * src_host;
@@ -79,8 +79,11 @@ int main() {
         }*/
         memset(&src_addr, 0, sizeof(src_addr));
 
-        log_debug("blabla\n");
-        src_addr.sin_addr.s_addr = inet_network(src_ip);
+        if((src_addr.sin_addr.s_addr = inet_addr(src_ip)) < 0) { // not inet_network
+            log_err("Input IP address [%s] to be converted to network byte order, is invalid!\n", src_ip);
+            log_warn("Error Occurred! Go back to wait for incoming requests ...\n");
+            continue;
+        }
 
         if((src_host = gethostbyaddr(&(src_addr.sin_addr), sizeof(src_addr.sin_addr), AF_INET)) == NULL) {
             switch(h_errno) {
@@ -98,12 +101,12 @@ int main() {
                     log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
                     break;
             }
-            log_info("Error Occurred! Go back to wait for incoming requests ...\n");
+
+            log_warn("Error Occurred! Go back to wait for incoming requests ...\n");
             continue;
         }
 
         log_info("server at node <%s> responding to request from <%s>\n", local_host_name, src_host->h_name);
-        log_debug("blabla\n");
 
         time(&a_clock);
         cur_time = localtime(&a_clock);
