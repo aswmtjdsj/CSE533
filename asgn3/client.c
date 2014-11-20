@@ -1,4 +1,12 @@
+#include <signal.h>
+#include <setjmp.h>
+
 #include "const.h"
+
+static sigjmp_buf jmpbuf;
+void sig_alarm(int signo) {
+    siglongjmp(jmpbuf, 1);
+}
 
 int handle_input() {
     // input command
@@ -183,8 +191,13 @@ SEND_MESSAGE:
     }
 
     // block in msg_recv
-    // TODO: timeout mechanism
-    if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
+
+    // timeout using signal alarm
+    signal(SIGALRM, sig_alarm);
+    alarm(SEND_MAX_TIMEOUT);
+
+    if(sigsetjmp(jmpbuf, 1) != 0) {
+        // msg_recv timed out
         if(send_flag == NON_REDISCOVER) { // for the first timeout, force re-tran; otherwise, give up
             log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
             log_info("Gonna retransmit the reponse from <%s> to <%s>, with route-discovery flag set\n", local_host_name, dest_host->h_name);
@@ -193,9 +206,15 @@ SEND_MESSAGE:
         } else {
             log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
             log_err("Retransmission has reached the limit, gonna give up!\n");
+            alarm(0); // give up re-sending
             goto SELECT_LABLE;
         }
     }
+
+    if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
+        my_err_quit("msg_recv err");
+    }
+    alarm(0); // successfully received something
 
     log_info("Client at node <%s>: received from <%s> [%s]\n", local_host_name, dest_host->h_name, msg_recvd);
 

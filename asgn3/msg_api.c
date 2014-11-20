@@ -20,6 +20,18 @@ struct send_msg_hdr * make_send_hdr(struct send_msg_hdr * hdr, char * ip, int po
     return hdr;
 }
 
+struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr * hdr, char * ip, int port, int len) {
+    if(hdr == NULL) {
+        hdr = malloc(sizeof(struct recv_msg_hdr));
+    }
+
+    hdr->src_ip = inet_addr(ip);
+    hdr->src_port = htons(port);
+    hdr->msg_len = htons(len);
+
+    return hdr;
+}
+
 int msg_send(int sockfd, char * dst_ip, int dst_port, char * msg, int flag) {
     log_debug("Sending message\n");
 
@@ -64,7 +76,8 @@ int msg_recv(int sockfd, char * msg, char * src_ip, int * src_port) {
     strcpy(tar_addr.sun_path, ODR_SUN_PATH);
 
     if((recv_size = recvfrom(sockfd, recv_dgram, (size_t) DGRAM_MAX_LEN, 0, (struct sockaddr *) &tar_addr, &tar_len)) < 0) {
-        my_err_quit("recvfrom error");
+        log_err("recvfrom error");
+        return -1;
     }
 
     memcpy(&hdr, recv_dgram, sizeof(struct recv_msg_hdr));
@@ -74,8 +87,8 @@ int msg_recv(int sockfd, char * msg, char * src_ip, int * src_port) {
 
     src_ip = inet_ntoa((struct in_addr){hdr.src_ip});
     *src_port = ntohs(hdr.src_port);
-    memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), hdr.msg_len);
-    msg[hdr.msg_len] = 0;
+    memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), ntohs(hdr.msg_len));
+    msg[ntohs(hdr.msg_len)] = 0;
 
     log_debug("Message received!\n");
     return 0;
