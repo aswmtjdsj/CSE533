@@ -119,10 +119,11 @@ int main(int argc, char * const *argv) {
             if (ret != 0)
                 log_info("Failed to connect to cmd server: "
                         "%s\n", strerror(errno));
-        } else {
-            write(cmd_fd, local_host_name, strlen(local_host_name));
-            fflush(stdin);
-            dup2(cmd_fd, fileno(stdin));
+            else {
+                write(cmd_fd, local_host_name, strlen(local_host_name));
+                fflush(stdin);
+                dup2(cmd_fd, fileno(stdin));
+            }
         }
     }
 
