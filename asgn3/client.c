@@ -187,7 +187,9 @@ SELECT_LABLE:
 
 SEND_MESSAGE:
     if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", send_flag) < 0) {
-        my_err_quit("msg_send error");
+        // my_err_quit("msg_send error");
+        log_err("msg_send error");
+        goto SELECT_LABLE;
     }
 
     // block in msg_recv
@@ -198,21 +200,22 @@ SEND_MESSAGE:
 
     if(sigsetjmp(jmpbuf, 1) != 0) {
         // msg_recv timed out
+        log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
         if(send_flag == NON_REDISCOVER) { // for the first timeout, force re-tran; otherwise, give up
-            log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
             log_info("Gonna retransmit the reponse from <%s> to <%s>, with route-discovery flag set\n", local_host_name, dest_host->h_name);
             send_flag = EN_REDISCOVER;
             goto SEND_MESSAGE;
         } else {
-            log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
             log_err("Retransmission has reached the limit, gonna give up!\n");
-            alarm(0); // give up re-sending
+            // no need, there will be no more than one alarm
+            // alarm(0); // give up re-sending
             goto SELECT_LABLE;
         }
     }
 
     if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
-        my_err_quit("msg_recv err");
+        log_err("msg_recv error");
+        goto SELECT_LABLE;
     }
     alarm(0); // successfully received something
 
