@@ -3,9 +3,16 @@
 
 #include <stdint.h>
 
-struct msg_hdr {
+struct send_msg_hdr {
     uint32_t dest_ip;
     uint16_t dest_port;
+    uint16_t flag;
+    uint16_t msg_len;
+};
+
+struct recv_msg_hdr {
+    uint32_t src_ip;
+    uint16_t src_port;
     uint16_t msg_len;
 };
 

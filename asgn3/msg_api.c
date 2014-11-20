@@ -1,25 +1,82 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #include "msg_api.h"
 #include "const.h"
 
+struct send_msg_hdr * make_send_hdr(struct send_msg_hdr * hdr, char * ip, int port, int flag, int len) {
+    if(hdr == NULL) {
+        hdr = malloc(sizeof(struct send_msg_hdr));
+    }
+
+    hdr->dest_ip = inet_addr(ip);
+    hdr->dest_port = htons(port);
+    hdr->flag = htons(flag);
+    hdr->msg_len = htons(len);
+
+    return hdr;
+}
+
 int msg_send(int sockfd, char * dst_ip, int dst_port, char * msg, int flag) {
-    // TODO
     log_debug("Sending message\n");
-    struct msg_hdr send_hdr;
+
+    struct sockaddr_un tar_addr;
+    struct send_msg_hdr * hdr = NULL;
+    int len = strlen(msg);
+    uint8_t send_dgram[DGRAM_MAX_LEN];
+    int sent_size;
+    socklen_t tar_len = 0;
+
+    hdr = make_send_hdr(hdr, dst_ip, dst_port, flag, len);
+    memcpy(send_dgram, hdr, sizeof(struct send_msg_hdr));
+    memcpy(send_dgram + sizeof(struct send_msg_hdr), msg, len);
+    sent_size = sizeof(struct send_msg_hdr) + len;
+
+    memset(&tar_addr, 0, sizeof(struct sockaddr_un));
+    tar_addr.sun_family = AF_LOCAL;
+    strcpy(tar_addr.sun_path, ODR_SUN_PATH);
+
+    tar_len = sizeof(tar_addr);
+    if((sent_size = sendto(sockfd, send_dgram, sent_size, 0, (struct sockaddr *) &tar_addr, tar_len)) < 0) {
+        log_err("sendto error\n");
+        return -1;
+    }
+
+    log_debug("Message sent!\n");
+    free(hdr);
     return 0;
 }
 
 int msg_recv(int sockfd, char * msg, char * src_ip, int * src_port) {
-    // clear the heap mem
-    if(msg != NULL) {
-        free(msg);
-        msg = NULL;
+    log_debug("Blocking to receive message\n");
+
+    int recv_size = 0;
+    char recv_dgram[DGRAM_MAX_LEN];
+    struct recv_msg_hdr hdr;
+    struct sockaddr_un tar_addr;
+    socklen_t tar_len = 0;
+
+    memset(&tar_addr, 0, sizeof(struct sockaddr_un));
+    tar_addr.sun_family = AF_LOCAL;
+    strcpy(tar_addr.sun_path, ODR_SUN_PATH);
+
+    if((recv_size = recvfrom(sockfd, recv_dgram, (size_t) DGRAM_MAX_LEN, 0, (struct sockaddr *) &tar_addr, &tar_len)) < 0) {
+        my_err_quit("recvfrom error");
     }
 
-    // TODO 
-    struct msg_hdr send_hdr;
+    memcpy(&hdr, recv_dgram, sizeof(struct recv_msg_hdr));
+    if(msg != NULL) {
+        memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), recv_size - sizeof(struct recv_msg_hdr));
+    }
 
+    src_ip = inet_ntoa((struct in_addr){hdr.src_ip});
+    *src_port = ntohs(hdr.src_port);
+    memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), hdr.msg_len);
+    msg[hdr.msg_len] = 0;
+
+    log_debug("Message received!\n");
     return 0;
 }

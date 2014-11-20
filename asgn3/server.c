@@ -6,6 +6,8 @@ const char vm_ip[][16] = { "130.245.156.21", "130.245.156.22", "130.245.156.23",
 
 int main() {
 
+    log_info("This is a time server!\n");
+
     int sock_un_fd;
     struct sockaddr_un serv_addr, serv_addr_info;
     char local_host_name[HOST_NAME_MAX_LEN] = "";
@@ -15,7 +17,7 @@ int main() {
 
     /* for receiving message */
     struct sockaddr_in src_addr;
-    char * msg_recvd = NULL, src_ip[IP_P_MAX_LEN] = "0.0.0.0";//"130.245.156.22";
+    char msg_recvd[MSG_MAX_LEN], src_ip[IP_P_MAX_LEN] = "0.0.0.0";//"130.245.156.22";
     int src_port;
     // char src_host_name[HOST_NAME_MAX_LEN] = "";
     struct hostent * src_host;
@@ -69,14 +71,8 @@ int main() {
         if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
             my_err_quit("msg_recv error");
         }
-        log_debug("Message received!\n");
-        // how to get host name by ip
-        /*for(idx = 0; idx < 10; idx++) {
-            if(strcmp(vm_ip[idx], src_ip) == 0) {
-                strcpy(src_host_name, vm_name[idx]);
-                break;
-            }
-        }*/
+
+        // get host name by ip
         memset(&src_addr, 0, sizeof(src_addr));
 
         if((src_addr.sin_addr.s_addr = inet_addr(src_ip)) < 0) { // not inet_network

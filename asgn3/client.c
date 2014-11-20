@@ -57,7 +57,7 @@ int main(int argc, char * const *argv) {
     // message sending
     int send_flag;
     // message received
-    char * msg_recvd = NULL, * src_ip = NULL;
+    char msg_recvd[MSG_MAX_LEN], src_ip[IP_P_MAX_LEN] = "0.0.0.0";
     int src_port;
 
     log_info("Client is going to create UNIX Domain socket!\n");
@@ -196,7 +196,6 @@ SEND_MESSAGE:
             goto SELECT_LABLE;
         }
     }
-    log_debug("Message received!\n");
 
     log_info("Client at node <%s>: received from <%s> [%s]\n", local_host_name, dest_host->h_name, msg_recvd);
 
