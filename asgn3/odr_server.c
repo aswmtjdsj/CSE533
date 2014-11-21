@@ -9,10 +9,53 @@
 struct co_table {
     int port;
     char sun_path[SUN_PATH_MAX_LEN];
-	struct timeval tv;
-	struct timeval remain_tv;
+	//struct timeval tv;
+	//struct timeval remain_tv;
     struct co_table * next;
 };
+
+struct co_table * table_head;
+
+void test_table(struct co_table * pt) {
+    int cnt = 0;
+    log_debug("index\tport\tsun_path\n");
+    while(pt != NULL) {
+        log_debug("#%d\t%d\t%s\n", cnt++, pt->port, pt->sun_path);
+        pt = pt->next;
+    }
+}
+
+void insert_table(struct co_table ** pt, int port, char * sun_path) {
+    struct co_table * prev = *pt, *cur = *pt;
+    while(cur != NULL) {
+        prev = cur;
+        cur = cur->next;
+    }
+    if(prev == NULL) {
+        *pt = (struct co_table *) malloc(sizeof(struct co_table));
+        (*pt)->port = port;
+        strcpy((*pt)->sun_path, sun_path);
+        (*pt)->next = NULL;
+    } else {
+        prev->next = malloc(sizeof(struct co_table));
+        cur = prev->next;
+        cur->port = port;
+        strcpy(cur->sun_path, sun_path);
+        cur->next = NULL;
+    }
+    log_debug("table entry inserted!\n");
+    test_table(*pt);
+}
+
+char * search_table(struct co_table * pt, int port) {
+    while(pt != NULL) {
+        if(port == pt->port) {
+            return pt->sun_path;
+        }
+        pt = pt->next;
+    }
+    return NULL;
+}
 
 void data_callback(void *buf, uint16_t len) {
 
@@ -25,7 +68,7 @@ void client_callback(void * ml, void * data, int rw) {
 int main(int argc, const char **argv) {
 
 	log_server_init(argc, argv);
-	log_debug("Test log\n");
+	// log_debug("Test log\n");
 
     char local_host_name[HOST_NAME_MAX_LEN];
     int sock_un_fd;
@@ -33,6 +76,11 @@ int main(int argc, const char **argv) {
     int path_len;
     socklen_t sock_len = 0;
     struct sockaddr_un odr_addr, odr_addr_info;
+
+    // table: port<->sun_path
+    table_head = NULL;
+    log_debug("Time server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
+    insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH);
 
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
         my_err_quit("gethostname error");
