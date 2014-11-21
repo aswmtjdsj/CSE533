@@ -185,6 +185,9 @@ static inline void
 route_table_update(struct odr_protocol *op, uint32_t daddr,
 		   uint32_t hop_count, struct sockaddr_ll *addr) {
 	//Update route table from information in the packet
+	if (daddr == op->myip)
+		//No action needed
+		return;
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
