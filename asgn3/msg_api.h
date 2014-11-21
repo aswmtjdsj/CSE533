@@ -16,6 +16,10 @@ struct recv_msg_hdr {
     uint16_t msg_len;
 };
 
+struct send_msg_hdr * make_send_hdr(struct send_msg_hdr *, char *, uint16_t, int, int);
+
+struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr *, char *, uint16_t, int);
+
 int msg_send(
         int /* socket fd for write */,
         char * /* 'canonical' IP for destination, in P format */,

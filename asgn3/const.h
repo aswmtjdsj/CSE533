@@ -20,6 +20,8 @@
 #define DGRAM_MAX_LEN 512
 #define ODR_MSG_MAX_LEN 1024
 
+#define MAX_PORT_NUM 65536
+
 #define SEND_MAX_TIMEOUT 5
 
 #define ODR_SUN_PATH "ODR_path_xiangyu"

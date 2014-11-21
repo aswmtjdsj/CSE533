@@ -109,13 +109,37 @@ void destroy_table(struct co_table * pt) {
 
 void data_callback(void * buf, uint16_t len) {
     log_debug("gonna push message back to application layer!\n");
-    uint8_t payload[MSG_MAX_LEN];
-    struct odr_msg_hdr hdr;
+    uint8_t payload[MSG_MAX_LEN], send_dgram[DGRAM_MAX_LEN];
+    struct sockaddr_un tar_addr;
+    struct odr_msg_hdr o_hdr;
+    struct recv_msg_hdr * r_hdr = NULL;
     int sent_size = 0;
+    socklen_t tar_len = 0;
+    char * sun_path = NULL;
 
     // parse odr_msg
-    memcpy(&hdr, buf, sizeof(struct odr_msg_hdr));
+    memcpy(&o_hdr, buf, sizeof(struct odr_msg_hdr));
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
+
+    make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len));
+    // find port
+    sun_path = search_table(table_head, ntohs(o_hdr.dst_port));
+    if(sun_path == NULL) {
+        if(ntohs(o_hdr.dst_port) == TIM_SERV_PORT) {
+            log_err("Time server port #%u is not open; time server is not running currently!\n");
+        } else {
+            log_err("The table entry (%u, %s) has expired!\n");
+        }
+        return ;
+    }
+
+    memset(&tar_addr, 0, sizeof(struct sockaddr_un));
+    tar_addr.sun_family = AF_LOCAL;
+    strcpy(tar_addr.sun_path, sun_path);
+
+    tar_len = sizeof(tar_addr);
+    // should get un fd first
+    // if((sent_size = sendto(sockfd
 
 }
 
@@ -152,9 +176,10 @@ void client_callback(void * ml, void * data, int rw) {
             src_ip = s->sin_addr.s_addr;
             break;
         }
+        head = head->ifi_next;
     }
     
-    src_port = rand() % 65536;
+    src_port = rand() % MAX_PORT_NUM;
     payload_len = recv_size - sizeof(struct send_msg_hdr);
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
     memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), payload_len);
