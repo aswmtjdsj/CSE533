@@ -113,28 +113,6 @@ int main(int argc, char * const *argv) {
 
     log_info("Current node: %s\n", local_host_name);
 
-    if (argc>=3) {
-        int cmd_fd;
-        //Was supplied with a command server to connect to
-        struct sockaddr_in cmdaddr;
-        int ret = inet_pton(AF_INET, argv[1], &cmdaddr.sin_addr);
-        uint16_t port = atoi(argv[2]);
-        cmdaddr.sin_port = htons(port);
-        cmdaddr.sin_family = AF_INET;
-        if (ret) {
-            cmd_fd = socket(AF_INET, SOCK_STREAM, 0);
-            ret = connect(cmd_fd,(struct sockaddr *)&cmdaddr,sizeof(cmdaddr));
-            if (ret != 0)
-                log_info("Failed to connect to cmd server: "
-                        "%s\n", strerror(errno));
-            else {
-                write(cmd_fd, local_host_name, strlen(local_host_name));
-                fflush(stdin);
-                dup2(cmd_fd, fileno(stdin));
-            }
-        }
-    }
-
 SELECT_LABLE:
     log_info("Select a server (destination) node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");
     switch((dest_id = handle_input())) {
@@ -188,7 +166,7 @@ SELECT_LABLE:
 SEND_MESSAGE:
     if(msg_send(sock_un_fd, dest_ip, TIM_SERV_PORT, "Q", send_flag) < 0) {
         // my_err_quit("msg_send error");
-        log_err("msg_send error");
+        log_err("msg_send error\n");
         goto SELECT_LABLE;
     }
 
