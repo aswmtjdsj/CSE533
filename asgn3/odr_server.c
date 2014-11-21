@@ -11,6 +11,7 @@ struct co_table {
     char sun_path[SUN_PATH_MAX_LEN];
 	//struct timeval tv;
 	//struct timeval remain_tv;
+    int time_to_live; // ms?
     struct co_table * next;
 };
 
@@ -18,14 +19,14 @@ struct co_table * table_head;
 
 void test_table(struct co_table * pt) {
     int cnt = 0;
-    log_debug("index\tport\tsun_path\n");
+    log_debug("index\tport\tsun_path\ttime_to_live\n");
     while(pt != NULL) {
-        log_debug("#%d\t%d\t%s\n", cnt++, pt->port, pt->sun_path);
+        log_debug("#%d\t%d\t%s\t%d\n", cnt++, pt->port, pt->sun_path, pt->time_to_live);
         pt = pt->next;
     }
 }
 
-void insert_table(struct co_table ** pt, int port, char * sun_path) {
+void insert_table(struct co_table ** pt, int port, char * sun_path, int time_to_live) {
     struct co_table * prev = *pt, *cur = *pt;
     while(cur != NULL) {
         prev = cur;
@@ -35,12 +36,14 @@ void insert_table(struct co_table ** pt, int port, char * sun_path) {
         *pt = (struct co_table *) malloc(sizeof(struct co_table));
         (*pt)->port = port;
         strcpy((*pt)->sun_path, sun_path);
+        (*pt)->time_to_live = time_to_live;
         (*pt)->next = NULL;
     } else {
         prev->next = malloc(sizeof(struct co_table));
         cur = prev->next;
         cur->port = port;
         strcpy(cur->sun_path, sun_path);
+        cur->time_to_live = time_to_live;
         cur->next = NULL;
     }
     log_debug("table entry inserted!\n");
@@ -78,9 +81,9 @@ int main(int argc, const char **argv) {
     struct sockaddr_un odr_addr, odr_addr_info;
 
     // table: port<->sun_path
-    table_head = NULL;
+    table_head = NULL; // init
     log_debug("Time server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
-    insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH);
+    insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, TIM_LIV_PERMAN);
 
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
         my_err_quit("gethostname error");
