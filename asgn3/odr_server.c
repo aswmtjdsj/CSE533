@@ -108,6 +108,14 @@ void destroy_table(struct co_table * pt) {
 }
 
 void data_callback(void * buf, uint16_t len) {
+    log_debug("gonna push message back to application layer!\n");
+    uint8_t payload[MSG_MAX_LEN];
+    struct odr_msg_hdr hdr;
+    int sent_size = 0;
+
+    // parse odr_msg
+    memcpy(&hdr, buf, sizeof(struct odr_msg_hdr));
+    memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
 }
 
