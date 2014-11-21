@@ -262,6 +262,16 @@ int main(int argc, const char **argv) {
     int path_len;
     socklen_t sock_len = 0;
     struct sockaddr_un odr_addr, odr_addr_info;
+    int staleness = 0;
+    if(argc < 2) {
+        log_err("Number of parameters incorrect!\n");
+        log_warn("Usage: ./odr_server <stale> #in seconds\n");
+        exit(EXIT_FAILURE);
+    } else {
+        staleness = atoi(argv[1]);
+        log_info("staleness: %d second(s) (%d milliseconds)\n", staleness, staleness * 1000);
+        staleness *= 1000;
+    }
 
     // init srand for random port
     srand(time(NULL));
@@ -313,7 +323,7 @@ int main(int argc, const char **argv) {
     void * ml = mainloop_new();
 
     // init odr 
-    struct odr_protocol * op = odr_protocol_init(ml, data_callback, &sock_un_fd, STALE_SEC, get_ifi_info(AF_INET, 0));
+    struct odr_protocol * op = odr_protocol_init(ml, data_callback, &sock_un_fd, staleness, get_ifi_info(AF_INET, 0));
 
     // set application response
     void * fh = fd_insert(ml, sock_un_fd, FD_READ, client_callback, NULL);

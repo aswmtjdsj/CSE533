@@ -33,8 +33,6 @@
 #define EN_REDISCOVER 1
 #define NON_REDISCOVER 0
 
-#define STALE_SEC 3
-
 #define TIM_LIV_PERMAN (-1)
 #define TIM_LIV_NON_PERMAN 5000 
 
