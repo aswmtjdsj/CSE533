@@ -1,5 +1,6 @@
 #include <time.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 
 #include "log.h"
 #include "mainloop.h"
@@ -187,8 +188,9 @@ void client_callback(void * ml, void * data, int rw) {
         }
         head = head->ifi_next;
     }
-    
+
 GEN_RAND_PORT:
+
     src_port = rand() % MAX_PORT_NUM;
     // a stupid method to avoid duplicate port number
     struct co_table * cur = table_head;
@@ -232,7 +234,6 @@ int main(int argc, const char **argv) {
 
     char local_host_name[HOST_NAME_MAX_LEN];
     int sock_un_fd;
-    char odr_proc_sun_path[SUN_PATH_MAX_LEN] = ODR_SUN_PATH;
     int path_len;
     socklen_t sock_len = 0;
     struct sockaddr_un odr_addr, odr_addr_info;
@@ -251,31 +252,34 @@ int main(int argc, const char **argv) {
     log_info("Current node: <%s>\n", local_host_name);
     log_info("ODR Process started and gonna create UNIX domain datagram socket!\n");
 
-    unlink(odr_proc_sun_path);
-    path_len = strlen(odr_proc_sun_path);
+    unlink(ODR_SUN_PATH);
+    path_len = strlen(ODR_SUN_PATH);
 
     // create unix domain socket
     if((sock_un_fd = socket(AF_LOCAL, SOCK_DGRAM, 0)) < 0) {
-        unlink(odr_proc_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(ODR_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("socket error");
     }
 
     // init odr addr
     memset(&odr_addr, 0, sizeof(odr_addr));
     odr_addr.sun_family = AF_LOCAL;
-    strncpy(odr_addr.sun_path, odr_proc_sun_path, path_len);
+    strncpy(odr_addr.sun_path, ODR_SUN_PATH, path_len);
     odr_addr.sun_path[path_len] = 0;
 
     // bind
     if(bind(sock_un_fd, (struct sockaddr *) &odr_addr, sizeof(odr_addr)) < 0) {
-        unlink(odr_proc_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(ODR_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("bind error");
     }
+
+    if (chmod(ODR_SUN_PATH, 0777) < 0)
+        log_err("chmod error %s\n", strerror(errno));
 
     // after binding, get sock info
     sock_len = sizeof(odr_addr_info);
     if(getsockname(sock_un_fd, (struct sockaddr *) &odr_addr_info, &sock_len) < 0) {
-        unlink(odr_proc_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(ODR_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("getsockname error");
     }
 

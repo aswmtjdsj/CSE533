@@ -84,6 +84,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 	lladdr.sll_halen = re->halen;
 	lladdr.sll_family = AF_PACKET;
 	lladdr.sll_protocol = htons(ODR_MAGIC);
+	lladdr.sll_pkttype = lladdr.sll_hatype = 0;
 
 	int ret = sendto(op->fd, msg->buf, msg->len, 0,
 	    (struct sockaddr *)&lladdr, sizeof(lladdr));
@@ -114,6 +115,30 @@ dump_odr_hdr(struct odr_hdr *hdr) {
 	    hdr->bid);
 }
 static inline
+int broadcast(struct odr_protocol *op, void *buf, size_t len) {
+	int i, c = 0;
+	struct sockaddr_ll lladdr;
+	lladdr.sll_protocol = htons(ODR_MAGIC);
+	lladdr.sll_family = AF_PACKET;
+	for(i=0; i<op->max_idx; i++) {
+		//Broadcast to all interfaces
+		if (!(op->ifi_table[i].ifi_flags & IFF_UP))
+			continue;
+		memset(lladdr.sll_addr, 255, IFHWADDRLEN);
+		lladdr.sll_ifindex = i;
+		lladdr.sll_halen = op->ifi_table[i].ifi_halen;
+		lladdr.sll_hatype = lladdr.sll_pkttype = 0;
+		int ret = sendto(op->fd, buf, len, 0,
+		    (struct sockaddr *)&lladdr, sizeof(lladdr));
+		if (ret < 0)
+			log_warn("Failed to send packet via %s: %s\n",
+			    op->ifi_table[i].ifi_name, strerror(errno));
+		else
+			c++;
+	}
+	return c;
+}
+static inline
 int send_msg(struct odr_protocol *op, struct msg *msg) {
 	int ret = send_msg_dontqueue(op, msg, 0);
 	if (ret)
@@ -125,8 +150,6 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 
 	//XXX And send rreq
 	log_info("No route entry found, rediscovering...\n");
-	int i;
-	struct sockaddr_ll lladdr;
 	void *buf = malloc(sizeof(struct odr_hdr));
 	struct odr_hdr *xhdr = buf, *hdr = msg->buf;
 	xhdr->daddr = hdr->daddr;
@@ -136,20 +159,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	xhdr->bid = op->bid++;
 	xhdr->payload_len = 0;
 
-	for(i=0; i<op->max_idx; i++) {
-		//Broadcast to all interfaces
-		if (!op->ifi_table[i].ifi_flags & IFF_UP)
-			continue;
-		memcpy(lladdr.sll_addr, op->ifi_table[i].ifi_hwaddr,
-		       sizeof(struct sockaddr_ll));
-		lladdr.sll_ifindex = i;
-		lladdr.sll_halen = op->ifi_table[i].ifi_halen;
-		int ret = sendto(op->fd, buf, sizeof(struct odr_hdr),
-		    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
-		if (ret < 0)
-			log_warn("Failed to send packet via %s: %s",
-			    op->ifi_table[i].ifi_name, strerror(errno));
-	}
+	broadcast(op, buf, sizeof(struct odr_hdr));
 	return 0;
 }
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
@@ -219,9 +229,6 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 	}
 
 	if (send_radv) {
-		struct sockaddr_ll lladdr;
-		lladdr.sll_family = AF_PACKET;
-		lladdr.sll_protocol = htons(ODR_MAGIC);
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
 		xhdr->flags = htons(ODR_RADV);
@@ -233,24 +240,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		log_info("Route updated, now we are advertising the new route"
 		    "to our neighbours\n");
 
-		int i;
-		for(i=0; i<op->max_idx; i++) {
-			//Send RADV to all interfaces
-			if (!op->ifi_table[i].ifi_flags & IFF_UP)
-				continue;
-			if (i == addr->sll_ifindex)
-				continue;
-			memcpy(lladdr.sll_addr,
-			    op->ifi_table[i].ifi_hwaddr,
-			    sizeof(struct sockaddr_ll));
-			lladdr.sll_ifindex = i;
-			lladdr.sll_halen = op->ifi_table[i].ifi_halen;
-			int ret = sendto(op->fd, buf, sizeof(struct odr_hdr),
-			    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
-			if (ret < 0)
-				log_warn("Failed to send packet via %s",
-				    op->ifi_table[i].ifi_name);
-		}
+		broadcast(op, buf, sizeof(struct odr_hdr));
 
 		//Then check op->pending_msgs to send out all
 		//message we can send
@@ -333,27 +323,10 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	if (!res || re->dst_ip != hdr->daddr) {
 		//Not found
 		log_info("No route entry found, broadcasting...\n");
-		int i;
-		struct sockaddr_ll lladdr;
 		int tmp = ntohs(hdr->hop_count);
-		hdr->hop_count = htons(tmp);
-		for(i=0; i<op->max_idx; i++) {
-			//Broadcast to all interfaces
-			if (!op->ifi_table[i].ifi_flags & IFF_UP)
-				continue;
-			if (i == addr->sll_ifindex)
-				continue;
-			memcpy(lladdr.sll_addr,
-			    op->ifi_table[i].ifi_hwaddr,
-			    sizeof(struct sockaddr_ll));
-			lladdr.sll_ifindex = i;
-			lladdr.sll_halen = op->ifi_table[i].ifi_halen;
-			int ret = sendto(op->fd, op->buf, op->msg_len,
-			    0, (struct sockaddr *)&lladdr, sizeof(lladdr));
-			if (ret < 0)
-				log_warn("Failed to send packet via %s: %s",
-				   op->ifi_table[i].ifi_name, strerror(errno));
-		}
+		hdr->hop_count = htons(tmp+1);
+
+		broadcast(op, op->buf, op->msg_len);
 	} else {
 		log_info("Route entry found, sending RREP"
 		    "on behalf of the target.\n");
@@ -466,6 +439,10 @@ static void odr_read_cb(void *ml, void *data, int rw){
 void *odr_protocol_init(void *ml, data_cb cb, void *data,
 			int stale, struct ifi_info *head) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
+	if (sockfd < 0) {
+		log_err("Failed to create packet socket\n");
+		return NULL;
+	}
 	struct odr_protocol *op = malloc(sizeof(struct odr_protocol));
 	op->fd = sockfd;
 	op->fh = fd_insert(ml, sockfd, FD_READ, odr_read_cb, op);
@@ -473,7 +450,11 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 	op->cb = cb;
 	op->buf_len = 0;
 	op->stale = stale;;
-	op->cbdata = data;
+	op->cbdata = data;;
+	op->route_table = calloc(1, sizeof(struct skip_list_head));
+	op->known_hosts = calloc(1, sizeof(struct skip_list_head));
+	skip_list_init_head(op->route_table);
+	skip_list_init_head(op->known_hosts);
 
 	struct ifi_info *tmp = head;
 	int max_idx = 0;
@@ -498,10 +479,11 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 			log_info("Ignoring loopback interface\n");
 			continue;
 		}
-		if (tmp->ifi_flags & IFF_UP) {
+		if (!(tmp->ifi_flags & IFF_UP)) {
 			log_info("Interface %s not up\n", tmp->ifi_name);
 			continue;
 		}
+		log_info("Valid interface %s, %d\n", tmp->ifi_name, tmp->ifi_index);
 		memcpy(op->ifi_table+tmp->ifi_index, tmp,
 		       sizeof(struct ifi_info));
 	}

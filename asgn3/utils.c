@@ -104,17 +104,21 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 	if (!ioctl(sockfd, SIOCGIFMTU, ifr))
 		ifi->ifi_mtu = ifr->ifr_metric;
 	if (!ioctl(sockfd, SIOCGIFHWADDR, ifr)) {
-		struct sockaddr_ll *lladdr = (void *)&ifr->ifr_hwaddr;
-		len = lladdr->sll_halen;
-		memcpy(ifi->ifi_hwaddr, lladdr->sll_addr, len);
-		ifi->ifi_halen = lladdr->sll_halen;
-	}
+		memcpy(ifi->ifi_hwaddr, ifr->ifr_hwaddr.sa_data, IFHWADDRLEN);
+		ifi->ifi_halen = IFHWADDRLEN;
+	} else
+		log_err("Failed to get hardware address for %s\n",
+		    ifr->ifr_name);
+	if (!ioctl(sockfd, SIOCGIFINDEX, ifr))
+		ifi->ifi_index = ifr->ifr_ifindex;
+	else
+		log_err("Failed to get index for %s\n", ifr->ifr_name);
 }
 
 struct ifi_info *
 get_ifi_info(int family, int doaliases) {
 	struct ifi_info *ifi, *ifihead, **ifipnext;
-	int len, lastlen, myflags, idx = 0;
+	int myflags, idx = 0;
 	char *ptr, *buf, lastname[IFNAMSIZ];
 	struct ifconf ifc;
 	struct ifreq *ifr, ifrcopy;
@@ -125,25 +129,18 @@ get_ifi_info(int family, int doaliases) {
 			return NULL;
 	}
 
-	lastlen = 0;
+	ifc.ifc_req = NULL;
 	/* initial buffer size guess */
-	len = 100 * sizeof(struct ifreq);
-	for ( ; ; ) {
-		buf = malloc(len);
-		ifc.ifc_len = len;
-		ifc.ifc_buf = buf;
-		if (ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
-			if (errno != EINVAL || lastlen != 0)
-				return NULL;
-		} else {
-			if (ifc.ifc_len == lastlen)
-				/* len doesn't change */
-				break;
-			lastlen = ifc.ifc_len;
-		}
-		len += 10 * sizeof(struct ifreq);
-		free(buf);
+	if (ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
+		log_err("ioctl failed: %s\n", strerror(errno));
+		return NULL;
 	}
+	buf = ifc.ifc_buf = malloc(ifc.ifc_len);
+	if (ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
+		log_err("ioctl failed: %s\n", strerror(errno));
+		return NULL;
+	}
+
 	ifihead = NULL;
 	ifipnext = &ifihead;
 	lastname[0] = 0;
