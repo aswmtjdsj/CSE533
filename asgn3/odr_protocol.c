@@ -97,27 +97,28 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 static inline void
 dump_odr_hdr(struct odr_hdr *hdr) {
 	log_debug("================ODR HEADER================\n");
-	log_debug("\tFLAGS:");
 	int flags = ntohs(hdr->flags);
+	char tmpf[30] = "";
+	char *tmpfp = tmpf;
 	if (flags & ODR_DATA)
-		log_debug("DATA ");
+		tmpfp += sprintf(tmpfp, "DATA ");
 	if (flags & ODR_RREP)
-		log_debug("RREP ");
+		tmpfp += sprintf(tmpfp, "RREP ");
 	if (flags & ODR_RREQ)
-		log_debug("RREQ ");
+		tmpfp += sprintf(tmpfp, "RREQ ");
 	if (flags & ODR_RADV)
-		log_debug("RADV ");
-	log_debug("\n");
+		tmpfp += sprintf(tmpfp, "RADV ");
+	log_debug("\tFLAGS: %s\n", tmpf);
 	log_debug("\tSource IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->saddr}));
 	log_debug("\tTarget IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->daddr}));
 	log_debug("\tHop count: %d\n", ntohs(hdr->hop_count));
-	log_debug("\tBroadcast ID (only makes sense for )RREQ): %d\n",
+	log_debug("\tBroadcast ID (only makes sense for RREQ): %d\n",
 	    ntohl(hdr->bid));
 }
 static inline
-int broadcast(struct odr_protocol *op, void *buf, size_t len) {
+int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 	int i, c = 0;
 	struct sockaddr_ll lladdr;
 	lladdr.sll_protocol = htons(ODR_MAGIC);
@@ -125,6 +126,8 @@ int broadcast(struct odr_protocol *op, void *buf, size_t len) {
 	for(i=0; i<=op->max_idx; i++) {
 		//Broadcast to all interfaces
 		if (!(op->ifi_table[i].ifi_flags & IFF_UP))
+			continue;
+		if (i == exclude)
 			continue;
 		memset(lladdr.sll_addr, 255, IFHWADDRLEN);
 		lladdr.sll_ifindex = i;
@@ -161,7 +164,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	xhdr->bid = htonl(op->bid++);
 	xhdr->payload_len = 0;
 
-	broadcast(op, buf, sizeof(struct odr_hdr));
+	broadcast(op, buf, sizeof(struct odr_hdr), -1);
 	return 0;
 }
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
@@ -225,7 +228,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 			re->timestamp = get_timestamp();
 		} else if (re->hop_count == hop_count) {
 			log_info("Update timestamp on route to %s through %s,"
-			    "hop: %d", inet_ntoa((struct in_addr){daddr}),
+			    "hop: %d\n", inet_ntoa((struct in_addr){daddr}),
 			    mac_tostring(re->route_mac, re->halen),
 			    re->hop_count);
 			re->timestamp = get_timestamp();
@@ -246,7 +249,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		log_info("Route updated, now we are advertising the new route"
 		    " to our neighbours\n");
 
-		broadcast(op, buf, sizeof(struct odr_hdr));
+		broadcast(op, buf, sizeof(struct odr_hdr), addr->sll_ifindex);
 
 		//Then check op->pending_msgs to send out all
 		//message we can send
@@ -280,8 +283,6 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
-
-	dump_odr_hdr(hdr);
 
 	//Looking up the source
 	struct skip_list_head *hres = skip_list_find_le(op->known_hosts,
@@ -332,7 +333,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 
-		broadcast(op, op->buf, op->msg_len);
+		broadcast(op, op->buf, op->msg_len, addr->sll_ifindex);
 	} else {
 		log_info("Route entry found, sending RREP"
 		    "on behalf of the target.\n");
@@ -421,7 +422,6 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	}
 
 	int mtu = op->ifi_table[addr.sll_ifindex].ifi_mtu;
-	log_info("Packet coming in from %d\n", addr.sll_ifindex);
 	if (ret > mtu && mtu)
 		log_warn("Packet larger than mtu (%d>%d)\n",
 		    ret, mtu);
@@ -432,6 +432,7 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	log_info("Packet coming in from %d\n", addr.sll_ifindex);
 
 	struct odr_hdr *hdr = op->buf;
+	dump_odr_hdr(hdr);
 	int flags = ntohs(hdr->flags);
 	if (flags & ODR_RREQ)
 		rreq_handler(op, &addr);
