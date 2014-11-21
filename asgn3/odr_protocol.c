@@ -120,7 +120,7 @@ int broadcast(struct odr_protocol *op, void *buf, size_t len) {
 	struct sockaddr_ll lladdr;
 	lladdr.sll_protocol = htons(ODR_MAGIC);
 	lladdr.sll_family = AF_PACKET;
-	for(i=0; i<op->max_idx; i++) {
+	for(i=0; i<=op->max_idx; i++) {
 		//Broadcast to all interfaces
 		if (!(op->ifi_table[i].ifi_flags & IFF_UP))
 			continue;
@@ -463,6 +463,7 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 			max_idx = tmp->ifi_index;
 		tmp = tmp->ifi_next;
 	}
+	op->max_idx = 0;
 	op->ifi_table = calloc(max_idx+1, sizeof(struct ifi_info));
 	for (tmp = head; tmp; tmp = tmp->ifi_next) {
 		if (op->ifi_table[tmp->ifi_index].ifi_name[0])
@@ -486,6 +487,8 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 		log_info("Valid interface %s, %d\n", tmp->ifi_name, tmp->ifi_index);
 		memcpy(op->ifi_table+tmp->ifi_index, tmp,
 		       sizeof(struct ifi_info));
+		if (tmp->ifi_index > op->max_idx)
+			op->max_idx = tmp->ifi_index;
 	}
 	return op;
 }
