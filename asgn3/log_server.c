@@ -20,16 +20,18 @@ void log_cb(void *ml, void *data, int rw) {
 		fd_remove(ml, cdata->fh);
 		return;
 	}
-	int x = 0;
+	int x = ret-1;
 	buf[ret] = 0;
-	while(buf[x] != '\n' && buf[x])
-		x++;
+	while(buf[x] != '\n' && x>=0)
+		x--;
+	if (x == -1)
+		x = ret-1;
 	ret = read(cdata->fd, buf, x+1);
 	buf[x+1] = 0;
 
 	static char *tmp = NULL;
 	static size_t len = 0;
-	log_info("[IP: %s]%s", sa_ntop((struct sockaddr *)&cdata->caddr,
+	log_info("[IP: %s]\n%s", sa_ntop((struct sockaddr *)&cdata->caddr,
 				       &tmp, &len), buf);
 }
 void listen_cb(void *ml, void *data, int rw) {
