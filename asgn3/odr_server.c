@@ -53,9 +53,6 @@ void make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload, i
     memcpy(odr_msg + sizeof(struct odr_msg_hdr), payload, payload_len);
     *odr_msg_size = sizeof(struct odr_msg_hdr) + payload_len;
 
-    log_debug("%u\n", hdr->src_ip);
-    log_debug("%u\n", hdr->dst_ip);
-
     char msg_debug[MSG_MAX_LEN];
     strncpy(msg_debug, payload, payload_len);
     msg_debug[payload_len] = 0;
