@@ -107,7 +107,7 @@ void destroy_table(struct co_table * pt) {
     }
 }
 
-void data_callback(void * buf, uint16_t len) {
+void data_callback(void * buf, uint16_t len, void * data) {
     log_debug("gonna push message back to application layer!\n");
     uint8_t payload[MSG_MAX_LEN], send_dgram[DGRAM_MAX_LEN];
     struct sockaddr_un tar_addr;
@@ -116,12 +116,17 @@ void data_callback(void * buf, uint16_t len) {
     int sent_size = 0;
     socklen_t tar_len = 0;
     char * sun_path = NULL;
+    int sockfd = *(int *)data;
 
     // parse odr_msg
     memcpy(&o_hdr, buf, sizeof(struct odr_msg_hdr));
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
     make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len));
+    memcpy(send_dgram, r_hdr, sizeof(struct send_msg_hdr));
+    memcpy(send_dgram + sizeof(struct send_msg_hdr), payload, o_hdr.msg_len);
+    sent_size = sizeof(struct send_msg_hdr) + o_hdr.msg_len;
+
     // find port
     sun_path = search_table(table_head, ntohs(o_hdr.dst_port));
     if(sun_path == NULL) {
@@ -139,8 +144,10 @@ void data_callback(void * buf, uint16_t len) {
 
     tar_len = sizeof(tar_addr);
     // should get un fd first
-    // if((sent_size = sendto(sockfd
-
+    if((sent_size = sendto(sockfd, send_dgram, sent_size, 0, (struct sockaddr *) &tar_addr, tar_len)) < 0) {
+        log_err("sendto error\n");
+        return ;
+    }
 }
 
 void client_callback(void * ml, void * data, int rw) {
@@ -255,7 +262,7 @@ int main(int argc, const char **argv) {
     void * ml = mainloop_new();
 
     // init odr 
-    struct odr_protocol * op = odr_protocol_init(ml, data_callback, STALE_SEC, get_ifi_info(AF_INET, 0));
+    struct odr_protocol * op = odr_protocol_init(ml, data_callback, &sock_un_fd, STALE_SEC, get_ifi_info(AF_INET, 0));
 
     // set application response
     void * fh = fd_insert(ml, sock_un_fd, FD_READ, client_callback, NULL);
