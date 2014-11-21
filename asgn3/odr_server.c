@@ -38,11 +38,12 @@ struct odr_msg_hdr * make_odr_msg_hdr(struct odr_msg_hdr * hdr, uint32_t src_ip,
         hdr = malloc(sizeof(struct odr_msg_hdr));
     }
 
+    // all network byte order
     hdr->src_ip = src_ip;
-    hdr->src_port = htons(src_port);
+    hdr->src_port = src_port;
     hdr->dst_ip = dst_ip;
-    hdr->dst_port = htons(dst_port);
-    hdr->msg_len = htons(len);
+    hdr->dst_port = dst_port;
+    hdr->msg_len = len;
 
     return hdr;
 }
@@ -51,8 +52,18 @@ void make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload, i
     memcpy(odr_msg, hdr, sizeof(struct odr_msg_hdr));
     memcpy(odr_msg + sizeof(struct odr_msg_hdr), payload, payload_len);
     *odr_msg_size = sizeof(struct odr_msg_hdr) + payload_len;
-    log_debug("ODR message size: %d\n", *odr_msg_size);
-    log_debug("ODR message payload: %s\n", (char *)payload);
+
+    log_debug("%u\n", hdr->src_ip);
+    log_debug("%u\n", hdr->dst_ip);
+
+    char msg_debug[MSG_MAX_LEN];
+    strncpy(msg_debug, payload, payload_len);
+    msg_debug[payload_len] = 0;
+
+    log_debug("%s\n", inet_ntoa((struct in_addr){hdr->src_ip}));
+    log_debug("%s\n", inet_ntoa((struct in_addr){hdr->dst_ip}));
+
+    log_debug("odr_msg: {hdr: {src_ip: \"%s\", src_port: %u, dst_ip: \"%s\", dst_port: %u, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){hdr->src_ip}), ntohs(hdr->src_port), inet_ntoa((struct in_addr){hdr->dst_ip}), ntohs(hdr->dst_port), ntohs(hdr->msg_len), msg_debug, *odr_msg_size);
 }
 
 void test_table(struct co_table * pt) {
@@ -215,7 +226,7 @@ GEN_RAND_PORT:
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
     memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), payload_len);
     make_odr_msg(odr_msg,
-            make_odr_msg_hdr(o_hdr, src_ip, src_port, s_hdr.dst_ip, s_hdr.dst_port, payload_len),
+            make_odr_msg_hdr(o_hdr, src_ip, htons(src_port), s_hdr.dst_ip, s_hdr.dst_port, htons(payload_len)),
             sent_payload,
             payload_len,
             &odr_msg_len);

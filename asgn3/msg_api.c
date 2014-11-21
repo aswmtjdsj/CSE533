@@ -25,6 +25,9 @@ void make_send_msg(uint8_t * send_msg, struct send_msg_hdr * s_hdr, void * paylo
     memcpy(send_msg + sizeof(struct send_msg_hdr), payload, payload_len);
     *send_msg_len = sizeof(struct send_msg_hdr) + payload_len;
 
+    char msg_debug[MSG_MAX_LEN];
+    strncpy(msg_debug, payload, payload_len);
+    msg_debug[payload_len] = 0;
     log_debug("send_msg: {hdr: {dst_ip: \"%s\", dst_port: %u, flag: %d, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){s_hdr->dst_ip}), ntohs(s_hdr->dst_port), ntohs(s_hdr->flag), ntohs(s_hdr->msg_len), payload, *send_msg_len);
 }
 

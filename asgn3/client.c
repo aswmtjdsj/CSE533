@@ -54,7 +54,7 @@ int main(int argc, char * const *argv) {
     struct sockaddr_un cli_addr, cli_addr_info;
     struct sockaddr_in dest_addr;
     // path template for mkstemp to use
-    char cli_sun_path[SUN_PATH_MAX_LEN] = "client_xiangyu_XXXXXX";
+    char cli_sun_path[SUN_PATH_MAX_LEN] = CLI_SUN_PATH;
     int path_len = 0;
     // local host name and dest name
     char local_host_name[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip = NULL;
@@ -111,7 +111,7 @@ int main(int argc, char * const *argv) {
         my_err_quit("gethostname error");
     }
 
-    log_info("Current node: %s\n", local_host_name);
+    log_info("Current node: <%s>\n", local_host_name);
 
 SELECT_LABLE:
     log_info("Select a server (destination) node (a numeric value [1-10] denoting vm[1-10], or \'Q\' to quit the program> ");

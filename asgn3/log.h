@@ -36,7 +36,7 @@ int color_print(int log_level, const char *prefix, const char *postfix,
 }
 
 #define log_debug(...) \
-    color_print(9, "\033[34m[DEBUG] ", "\033[0m", __VA_ARGS__)
+    color_print(9, "\033[35m[DEBUG] ", "\033[0m", __VA_ARGS__)
 #define log_warn(...) \
     color_print(7, "\033[33m[WARNING] ", "\033[0m", __VA_ARGS__)
 #define log_err(...) \
