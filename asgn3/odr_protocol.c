@@ -13,6 +13,7 @@ struct odr_protocol {
 	size_t buf_len, msg_len;
 	void *fh;
 	data_cb cb;
+	void *cbdata;
 	uint32_t myip;
 	uint64_t bid;
 	uint64_t stale;
@@ -409,7 +410,7 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		send_msg(op, msg);
 	} else
 		//Deliver the packet
-		op->cb((void *)(hdr+1), ntohs(hdr->payload_len));
+		op->cb((void *)(hdr+1), ntohs(hdr->payload_len), op->cbdata);
 }
 
 static inline void
@@ -462,8 +463,8 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	else if (flags & ODR_RADV)
 		radv_handler(op, &addr);
 }
-void *odr_protocol_init(void *ml, data_cb cb, int stale,
-			struct ifi_info *head) {
+void *odr_protocol_init(void *ml, data_cb cb, void *data,
+			int stale, struct ifi_info *head) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
 	struct odr_protocol *op = malloc(sizeof(struct odr_protocol));
 	op->fd = sockfd;
@@ -471,7 +472,8 @@ void *odr_protocol_init(void *ml, data_cb cb, int stale,
 	op->buf = NULL;
 	op->cb = cb;
 	op->buf_len = 0;
-	op->stale = stale;
+	op->stale = stale;;
+	op->cbdata = data;
 
 	struct ifi_info *tmp = head;
 	int max_idx = 0;
