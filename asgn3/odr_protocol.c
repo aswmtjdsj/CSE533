@@ -62,19 +62,28 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 	struct odr_hdr *hdr = msg->buf;
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &hdr->daddr, addr_cmp);
-	if (!res)
-		//No route to host
-		return 0;
-
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
+	if (!res || re->dst_ip != hdr->daddr) {
+		//No route to host
+		log_info("Route to destination %s not found\n",
+		    inet_ntoa((struct in_addr){hdr->daddr}));
+		return 0;
+	}
+
 	uint64_t now = get_timestamp();
-	if ((msg->flags & ODR_MSG_STALE) && !direct)
+	if (msg->flags && !direct) {
+		log_info("Route to destination %s found, but flag is set\n",
+		    inet_ntoa((struct in_addr){hdr->daddr}));
 		//Force rediscovery
 		return 0;
+	}
 
-	if (re->timestamp+op->stale < now)
+	if (re->timestamp+op->stale < now) {
+		log_info("Route to destination %s found, but staled\n",
+		    inet_ntoa((struct in_addr){hdr->daddr}));
 		//Route stale
 		return 0;
+	}
 
 	//Send it out!
 	struct sockaddr_ll lladdr;
@@ -89,7 +98,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 	int ret = sendto(op->fd, msg->buf, msg->len, 0,
 	    (struct sockaddr *)&lladdr, sizeof(lladdr));
 	if (ret < 0) {
-		log_warn("Failed to send packet\n");
+		log_err("Failed to send packet\n");
 		return 0;
 	}
 	return 1;
@@ -336,7 +345,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		broadcast(op, op->buf, op->msg_len, addr->sll_ifindex);
 	} else {
 		log_info("Route entry found, sending RREP"
-		    "on behalf of the target.\n");
+		    " on behalf of the target.\n");
 		struct msg *nm = calloc(1, sizeof(struct msg));
 		struct odr_hdr *xhdr = NULL;
 		nm->buf = calloc(1, sizeof(struct odr_hdr));
