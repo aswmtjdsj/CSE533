@@ -66,7 +66,7 @@ int main(int argc, char * const *argv) {
     int send_flag;
     // message received
     char msg_recvd[MSG_MAX_LEN], src_ip[IP_P_MAX_LEN] = "0.0.0.0";
-    int src_port;
+    uint16_t src_port;
 
     log_info("Client is going to create UNIX Domain socket!\n");
 
@@ -118,7 +118,7 @@ int main(int argc, char * const *argv) {
         //Was supplied with a command server to connect to
         struct sockaddr_in cmdaddr;
         int ret = inet_pton(AF_INET, argv[1], &cmdaddr.sin_addr);
-        int port = atoi(argv[2]);
+        uint16_t port = atoi(argv[2]);
         cmdaddr.sin_port = htons(port);
         cmdaddr.sin_family = AF_INET;
         if (ret) {

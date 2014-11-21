@@ -18,7 +18,7 @@ int main() {
     /* for receiving message */
     struct sockaddr_in src_addr;
     char msg_recvd[MSG_MAX_LEN], src_ip[IP_P_MAX_LEN] = "0.0.0.0";//"130.245.156.22";
-    int src_port;
+    uint16_t src_port;
     // char src_host_name[HOST_NAME_MAX_LEN] = "";
     struct hostent * src_host;
 
