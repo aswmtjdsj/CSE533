@@ -98,21 +98,23 @@ static inline void
 dump_odr_hdr(struct odr_hdr *hdr) {
 	log_debug("================ODR HEADER================\n");
 	log_debug("\tFLAGS:");
-	if (hdr->flags & ODR_DATA)
+	int flags = ntohs(hdr->flags);
+	if (flags & ODR_DATA)
 		log_debug("DATA ");
-	if (hdr->flags & ODR_RREP)
+	if (flags & ODR_RREP)
 		log_debug("RREP ");
-	if (hdr->flags & ODR_RREQ)
+	if (flags & ODR_RREQ)
 		log_debug("RREQ ");
-	if (hdr->flags & ODR_RADV)
+	if (flags & ODR_RADV)
 		log_debug("RADV ");
+	log_debug("\n");
 	log_debug("\tSource IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->saddr}));
 	log_debug("\tTarget IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->daddr}));
-	log_debug("\tHop count: %d\n", hdr->hop_count);
-	log_debug("\tBroadcast ID (only makes sense for RREQ): %d\n",
-	    hdr->bid);
+	log_debug("\tHop count: %d\n", ntohs(hdr->hop_count));
+	log_debug("\tBroadcast ID (only makes sense for )RREQ): %d\n",
+	    ntohl(hdr->bid));
 }
 static inline
 int broadcast(struct odr_protocol *op, void *buf, size_t len) {
@@ -156,7 +158,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	xhdr->saddr = op->myip;
 	xhdr->hop_count = 0;
 	xhdr->flags = htons(ODR_RREQ);
-	xhdr->bid = op->bid++;
+	xhdr->bid = htonl(op->bid++);
 	xhdr->payload_len = 0;
 
 	broadcast(op, buf, sizeof(struct odr_hdr));
@@ -237,7 +239,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		xhdr->flags = htons(ODR_RADV);
 		xhdr->hop_count = htons(hop_count+1);
 		xhdr->payload_len = 0;
-		xhdr->bid = htons(op->bid++);
+		xhdr->bid = htonl(op->bid++);
 		xhdr->daddr = 0;
 		xhdr->saddr = daddr;
 
@@ -276,8 +278,8 @@ static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
-	if (hdr->bid > op->bid)
-		op->bid = hdr->bid+1;
+	if (ntohl(hdr->bid) > op->bid)
+		op->bid = ntohl(hdr->bid)+1;
 
 	dump_odr_hdr(hdr);
 
