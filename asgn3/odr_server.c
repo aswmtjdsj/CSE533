@@ -71,6 +71,7 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, int tim
             log_warn("Seems due to \'too short the timeout of sending request is\'?\n");
             return ;
         }
+        cur = cur->next;
     }
 
     struct co_table * new_table = (struct co_table *) malloc(sizeof(struct co_table));
@@ -170,6 +171,7 @@ void client_callback(void * ml, void * data, int rw) {
     if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0, (struct sockaddr *) &cli_addr, &cli_len)) < 0) {
         my_err_quit("recvfrom error");
     }
+
     log_debug("Message retrieved from application layer!\n");
 
     // send ODR message, TODO
@@ -186,7 +188,27 @@ void client_callback(void * ml, void * data, int rw) {
         head = head->ifi_next;
     }
     
+GEN_RAND_PORT:
     src_port = rand() % MAX_PORT_NUM;
+    // a stupid method to avoid duplicate port number
+    struct co_table * cur = table_head;
+    while(cur) {
+        if(cur->port == src_port) {
+            log_debug("Poor you! How back luck to generate a conflict port number!\n");
+            goto GEN_RAND_PORT;
+        }
+        cur = cur->next;
+    }
+
+    if(src_port == TIM_SERV_PORT) {
+        log_debug("Poor you! How back luck to generate a conflict port number!\n");
+        goto GEN_RAND_PORT;
+    }
+
+    // insert new non-permanent client sun_path and corresponding port
+    insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
+
+    // send msg via odr
     payload_len = recv_size - sizeof(struct send_msg_hdr);
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
     memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), payload_len);
@@ -196,11 +218,10 @@ void client_callback(void * ml, void * data, int rw) {
             payload_len,
             &odr_msg_len);
 
+    log_debug("going to send message via odr!\n");
     // call send message api
     send_msg_api(op, s_hdr.dst_ip, odr_msg, odr_msg_len, s_hdr.flag);
 
-    // insert new non-permanent client sun_path and corresponding port
-    insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
 }
 
 int main(int argc, const char **argv) {
@@ -273,8 +294,11 @@ int main(int argc, const char **argv) {
 
     mainloop_run(ml);
 
-    log_info("ODR Process quiting!\n");
+    log_info("All work done!\n");
+    log_info("Cleaning resources ...\n");
     free(ml);
+    destroy_table(table_head);
+    log_info("ODR Process quiting!\n");
 
 	return 0;
 }
