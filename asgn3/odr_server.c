@@ -107,7 +107,7 @@ void destroy_table(struct co_table * pt) {
     }
 }
 
-void data_callback(void *buf, uint16_t len) {
+void data_callback(void * buf, uint16_t len) {
 
 }
 
@@ -131,6 +131,7 @@ void client_callback(void * ml, void * data, int rw) {
     if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0, (struct sockaddr *) &cli_addr, &cli_len)) < 0) {
         my_err_quit("recvfrom error");
     }
+    log_debug("Message retrieved from application layer!\n");
 
     // send ODR message, TODO
     // construct ODR msg hdr

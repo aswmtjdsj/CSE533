@@ -178,7 +178,7 @@ SEND_MESSAGE:
 
     if(sigsetjmp(jmpbuf, 1) != 0) {
         // msg_recv timed out
-        log_warn("Client at node <%s>: timeout on response from <%s>", local_host_name, dest_host->h_name);
+        log_warn("Client at node <%s>: timeout on response from <%s>\n", local_host_name, dest_host->h_name);
         if(send_flag == NON_REDISCOVER) { // for the first timeout, force re-tran; otherwise, give up
             log_info("Gonna retransmit the reponse from <%s> to <%s>, with route-discovery flag set\n", local_host_name, dest_host->h_name);
             send_flag = EN_REDISCOVER;
@@ -192,7 +192,7 @@ SEND_MESSAGE:
     }
 
     if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
-        log_err("msg_recv error");
+        log_err("msg_recv error\n");
         goto SELECT_LABLE;
     }
     alarm(0); // successfully received something
