@@ -17,8 +17,9 @@ struct recv_msg_hdr {
 };
 
 struct send_msg_hdr * make_send_hdr(struct send_msg_hdr *, char *, uint16_t, int, int);
-
+void make_send_msg(uint8_t *, struct send_msg_hdr *, void *, int, int *);
 struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr *, char *, uint16_t, int);
+void make_recv_msg(uint8_t *, struct recv_msg_hdr *, void *, int, int *);
 
 int msg_send(
         int /* socket fd for write */,

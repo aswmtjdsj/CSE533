@@ -123,10 +123,10 @@ void data_callback(void * buf, uint16_t len, void * data) {
     memcpy(&o_hdr, buf, sizeof(struct odr_msg_hdr));
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
-    make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len));
-    memcpy(send_dgram, r_hdr, sizeof(struct send_msg_hdr));
+    make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, o_hdr.msg_len, &sent_size);
+    /*memcpy(send_dgram, r_hdr, sizeof(struct send_msg_hdr));
     memcpy(send_dgram + sizeof(struct send_msg_hdr), payload, o_hdr.msg_len);
-    sent_size = sizeof(struct send_msg_hdr) + o_hdr.msg_len;
+    sent_size = sizeof(struct send_msg_hdr) + o_hdr.msg_len;*/
 
     // find port
     sun_path = search_table(table_head, ntohs(o_hdr.dst_port));
@@ -208,8 +208,8 @@ GEN_RAND_PORT:
     // insert new non-permanent client sun_path and corresponding port
     insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
 
-    // send msg via odr
     payload_len = recv_size - sizeof(struct send_msg_hdr);
+    // parse application message
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
     memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), payload_len);
     make_odr_msg(odr_msg,
@@ -219,7 +219,8 @@ GEN_RAND_PORT:
             &odr_msg_len);
 
     log_debug("going to send message via odr!\n");
-    // call send message api
+
+    // send msg via odr
     send_msg_api(op, s_hdr.dst_ip, odr_msg, odr_msg_len, s_hdr.flag);
 
 }

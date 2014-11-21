@@ -20,6 +20,14 @@ struct send_msg_hdr * make_send_hdr(struct send_msg_hdr * hdr, char * ip, uint16
     return hdr;
 }
 
+void make_send_msg(uint8_t * send_msg, struct send_msg_hdr * s_hdr, void * payload, int payload_len, int * send_msg_len) {
+    memcpy(send_msg, s_hdr, sizeof(struct send_msg_hdr));
+    memcpy(send_msg + sizeof(struct send_msg_hdr), payload, payload_len);
+    *send_msg_len = sizeof(struct send_msg_hdr) + payload_len;
+
+    log_debug("send_msg: {hdr: {dst_ip: \"%s\", dst_port: %u, flag: %d, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){s_hdr->dst_ip}), ntohs(s_hdr->dst_port), ntohs(s_hdr->flag), ntohs(s_hdr->msg_len), payload, *send_msg_len);
+}
+
 struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr * hdr, char * ip, uint16_t port, int len) {
     if(hdr == NULL) {
         hdr = malloc(sizeof(struct recv_msg_hdr));
@@ -32,6 +40,14 @@ struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr * hdr, char * ip, uint16
     return hdr;
 }
 
+void make_recv_msg(uint8_t * recv_msg, struct recv_msg_hdr * r_hdr, void * payload, int payload_len, int * recv_msg_len) {
+    memcpy(recv_msg, r_hdr, sizeof(struct recv_msg_hdr));
+    memcpy(recv_msg + sizeof(struct recv_msg_hdr), payload, payload_len);
+    *recv_msg_len = sizeof(struct recv_msg_hdr) + payload_len;
+
+    log_debug("recv_msg: {hdr: {src_ip: \"%s\", src_port: %u, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){r_hdr->src_ip}), ntohs(r_hdr->src_port), ntohs(r_hdr->msg_len), payload, *recv_msg_len);
+}
+
 int msg_send(int sockfd, char * dst_ip, uint16_t dst_port, char * msg, int flag) {
     log_debug("Sending message\n");
 
@@ -39,13 +55,10 @@ int msg_send(int sockfd, char * dst_ip, uint16_t dst_port, char * msg, int flag)
     struct send_msg_hdr * hdr = NULL;
     int len = strlen(msg);
     uint8_t send_dgram[DGRAM_MAX_LEN];
-    int sent_size;
+    int sent_size = 0;
     socklen_t tar_len = 0;
 
-    hdr = make_send_hdr(hdr, dst_ip, dst_port, flag, len);
-    memcpy(send_dgram, hdr, sizeof(struct send_msg_hdr));
-    memcpy(send_dgram + sizeof(struct send_msg_hdr), msg, len);
-    sent_size = sizeof(struct send_msg_hdr) + len;
+    make_send_msg(send_dgram, make_send_hdr(hdr, dst_ip, dst_port, flag, len), msg, len, &sent_size);
 
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
     tar_addr.sun_family = AF_LOCAL;
