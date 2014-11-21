@@ -1,6 +1,5 @@
 CC = gcc
 LIBS = -lrt
-log_server_OBJS = log_server.o mainloop.o utils.o
 time_client_OBJS = client.o utils.o msg_api.o
 time_server_OBJS = server.o utils.o msg_api.o
 odr_server_OBJS = odr_server.o mainloop.o utils.o odr_protocol.o msg_api.o
@@ -14,9 +13,6 @@ all: $(OBJS) $(BINARIES)
 	gcc -MM -MT $(<:.c=.o) -MT $(<:.c=.P) -MF $@ $<
 
 -include $(OBJS:.o=.P)
-
-log_server: $(log_server_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 time_client: $(time_client_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)

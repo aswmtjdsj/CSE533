@@ -254,9 +254,6 @@ SEND_ODR_MSG:
 
 int main(int argc, const char **argv) {
 
-	log_server_init(argc, argv);
-	// log_debug("Test log\n");
-
     char local_host_name[HOST_NAME_MAX_LEN];
     int sock_un_fd;
     int path_len;
