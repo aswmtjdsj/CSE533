@@ -46,6 +46,14 @@ struct odr_msg_hdr * make_odr_msg_hdr(struct odr_msg_hdr * hdr, uint32_t src_ip,
     return hdr;
 }
 
+void make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload, int payload_len, int * odr_msg_size) {
+    memcpy(odr_msg, hdr, sizeof(struct odr_msg_hdr));
+    memcpy(odr_msg + sizeof(struct odr_msg_hdr), payload, payload_len);
+    *odr_msg_size = sizeof(struct odr_msg_hdr) + payload_len;
+    log_debug("ODR message size: %d\n", *odr_msg_size);
+    log_debug("ODR message payload: %s\n", (char *)payload);
+}
+
 void test_table(struct co_table * pt) {
     int cnt = 0;
     log_debug("index\tport\tsun_path\ttime_to_live\n");
@@ -86,6 +94,8 @@ char * search_table(struct co_table * pt, uint16_t port) {
 }
 
 // remove from table when timeout
+void remove_from_table(struct co_table * pt) {
+}
 
 void destroy_table(struct co_table * pt) {
     log_debug("Destorying the mapping table ...\n");
@@ -102,18 +112,20 @@ void data_callback(void *buf, uint16_t len) {
 }
 
 void client_callback(void * ml, void * data, int rw) {
+
     struct bound_data * b_d = data;
     struct fd * fh = b_d->fh;
     struct odr_protocol * op = b_d->op;
     int sockfd = fd_get_fd(fh);
     int recv_size = 0;
-    char sent_msg[MSG_MAX_LEN], sent_payload[MSG_MAX_LEN];
+    uint8_t sent_msg[DGRAM_MAX_LEN], sent_payload[MSG_MAX_LEN], odr_msg[ODR_MSG_MAX_LEN];
     struct sockaddr_un cli_addr;
     socklen_t cli_len = sizeof(struct sockaddr_un);
     struct send_msg_hdr s_hdr;
     struct odr_msg_hdr * o_hdr = NULL;
+    uint32_t src_ip;
     uint16_t src_port;
-    int msg_len = 0;
+    int payload_len = 0, odr_msg_len;
 
     // recv the time client request
     if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0, (struct sockaddr *) &cli_addr, &cli_len)) < 0) {
@@ -122,16 +134,32 @@ void client_callback(void * ml, void * data, int rw) {
 
     // send ODR message, TODO
     // construct ODR msg hdr
-    // using time client request and op->myip and rand port
+    // using time client request to get dst ip and port
+    // along with local ip and random port
+    struct ifi_info * head = get_ifi_info(AF_INET, 0);
+    while(head) {
+        if(strcmp(head->ifi_name, "eth0") == 0) {
+            struct sockaddr_in *s = (struct sockaddr_in *) head->ifi_addr;
+            src_ip = s->sin_addr.s_addr;
+            break;
+        }
+    }
+    
     src_port = rand() % 65536;
+    payload_len = recv_size - sizeof(struct send_msg_hdr);
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
-    memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), recv_size - sizeof(struct send_msg_hdr));
-    // bug here
-    // make_odr_msg_hdr(o_hdr, op->myip, src_port, s_hdr.dst_ip, s_hdr.dst_port, msg_len);
+    memcpy(sent_payload, sent_msg + sizeof(struct send_msg_hdr), payload_len);
+    make_odr_msg(odr_msg,
+            make_odr_msg_hdr(o_hdr, src_ip, src_port, s_hdr.dst_ip, s_hdr.dst_port, payload_len),
+            sent_payload,
+            payload_len,
+            &odr_msg_len);
+
+    // call send message api
+    send_msg_api(op, s_hdr.dst_ip, odr_msg, odr_msg_len, s_hdr.flag);
 
     // insert new non-permanent client sun_path and corresponding port
     insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
-
 }
 
 int main(int argc, const char **argv) {
@@ -150,7 +178,7 @@ int main(int argc, const char **argv) {
     srand(time(NULL));
     // table: port<->sun_path
     table_head = NULL; // init
-    log_debug("Time server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
+    log_debug("ODR server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
     insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, TIM_LIV_PERMAN);
 
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {

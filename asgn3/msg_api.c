@@ -66,7 +66,7 @@ int msg_recv(int sockfd, char * msg, char * src_ip, uint16_t * src_port) {
     log_debug("Blocking to receive message\n");
 
     int recv_size = 0;
-    char recv_dgram[DGRAM_MAX_LEN];
+    uint8_t recv_dgram[DGRAM_MAX_LEN];
     struct recv_msg_hdr hdr;
     struct sockaddr_un tar_addr;
     socklen_t tar_len = 0;
