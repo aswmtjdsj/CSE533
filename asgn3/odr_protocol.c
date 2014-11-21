@@ -210,7 +210,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 	} else {
 		if (re->hop_count > hop_count) {
 			log_info("Update route to %s through %s, hop: %d"
-			    "to through %s, hop: %d\n",
+			    " to through %s, hop: %d\n",
 			    inet_ntoa((struct in_addr){daddr}),
 			    mac_tostring(re->route_mac, re->halen),
 			    re->hop_count,
@@ -239,16 +239,17 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		xhdr->payload_len = 0;
 		xhdr->bid = htons(op->bid++);
 		xhdr->daddr = 0;
+		xhdr->saddr = daddr;
 
 		log_info("Route updated, now we are advertising the new route"
-		    "to our neighbours\n");
+		    " to our neighbours\n");
 
 		broadcast(op, buf, sizeof(struct odr_hdr));
 
 		//Then check op->pending_msgs to send out all
 		//message we can send
 		log_info("Route updated, now checking if any pending messages"
-		    "become sendable\n");
+		    " become sendable\n");
 		struct msg *tmp = op->pending_msgs;
 		struct msg **nextp = &op->pending_msgs;
 		while(tmp) {
