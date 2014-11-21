@@ -60,10 +60,11 @@ void make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload, i
     strncpy(msg_debug, payload, payload_len);
     msg_debug[payload_len] = 0;
 
-    log_debug("%s\n", inet_ntoa((struct in_addr){hdr->src_ip}));
-    log_debug("%s\n", inet_ntoa((struct in_addr){hdr->dst_ip}));
+    char src_ip_p[IP_P_MAX_LEN], dst_ip_p[IP_P_MAX_LEN];
+    strcpy(src_ip_p, inet_ntoa((struct in_addr){hdr->src_ip}));
+    strcpy(dst_ip_p, inet_ntoa((struct in_addr){hdr->dst_ip}));
 
-    log_debug("odr_msg: {hdr: {src_ip: \"%s\", src_port: %u, dst_ip: \"%s\", dst_port: %u, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){hdr->src_ip}), ntohs(hdr->src_port), inet_ntoa((struct in_addr){hdr->dst_ip}), ntohs(hdr->dst_port), ntohs(hdr->msg_len), msg_debug, *odr_msg_size);
+    log_debug("odr_msg: {hdr: {src_ip: \"%s\", src_port: %u, dst_ip: \"%s\", dst_port: %u, msg_len: %d}, payload: \"%s\", len: %d}\n", src_ip_p, ntohs(hdr->src_port), dst_ip_p, ntohs(hdr->dst_port), ntohs(hdr->msg_len), msg_debug, *odr_msg_size);
 }
 
 void test_table(struct co_table * pt) {
@@ -96,9 +97,20 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, int tim
     test_table(table_head);
 }
 
-char * search_table(struct co_table * pt, uint16_t port) {
+char * search_table_by_port(struct co_table * pt, uint16_t port) {
     while(pt != NULL) {
         if(port == pt->port) {
+            return pt->sun_path;
+        }
+        pt = pt->next;
+    }
+    return NULL;
+}
+
+char * search_table_by_sun_path(struct co_table * pt, char * sun_path) {
+    if(sun_path == NULL) return NULL;
+    while(pt != NULL) {
+        if(strcmp(sun_path, pt->sun_path) == 0) {
             return pt->sun_path;
         }
         pt = pt->next;
@@ -141,7 +153,7 @@ void data_callback(void * buf, uint16_t len, void * data) {
     sent_size = sizeof(struct send_msg_hdr) + o_hdr.msg_len;*/
 
     // find port
-    sun_path = search_table(table_head, ntohs(o_hdr.dst_port));
+    sun_path = search_table_by_port(table_head, ntohs(o_hdr.dst_port));
     if(sun_path == NULL) {
         if(ntohs(o_hdr.dst_port) == TIM_SERV_PORT) {
             log_err("Time server port #%u is not open; time server is not running currently!\n");
@@ -200,6 +212,10 @@ void client_callback(void * ml, void * data, int rw) {
         head = head->ifi_next;
     }
 
+    if(search_table_by_sun_path(table_head, cli_addr.sun_path) != NULL) {
+        log_warn("Time client with sun_path \"%s\" has existed in mapping table! No need to generate random port!\n", cli_addr.sun_path);
+        goto SEND_ODR_MSG;
+    }
 GEN_RAND_PORT:
 
     src_port = rand() % MAX_PORT_NUM;
@@ -221,6 +237,7 @@ GEN_RAND_PORT:
     // insert new non-permanent client sun_path and corresponding port
     insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
 
+SEND_ODR_MSG:
     payload_len = recv_size - sizeof(struct send_msg_hdr);
     // parse application message
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
