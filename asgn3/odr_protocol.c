@@ -152,7 +152,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	return 0;
 }
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
-		 const char *buf, size_t len, int flags) {
+		 const void *buf, size_t len, int flags) {
 	struct msg *msg = calloc(1, sizeof(struct msg));
 	msg->flags = flags;
 	msg->len = len+sizeof(struct odr_hdr);
@@ -486,7 +486,7 @@ void *odr_protocol_init(void *ml, data_cb cb, int stale,
 		if (op->ifi_table[tmp->ifi_index].ifi_name[0])
 			log_warn("Duplicated interface, shouldn't use"
 			    " doalias\n");
-		if (strcmp(tmp->ifi_name, "eth0")) {
+		if (strcmp(tmp->ifi_name, "eth0") == 0) {
 			log_info("Ignoring eth0 (but recording the ip)\n");
 			struct sockaddr_in *s = (struct sockaddr_in *)
 			    tmp->ifi_addr;
