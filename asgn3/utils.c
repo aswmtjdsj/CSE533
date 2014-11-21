@@ -105,7 +105,7 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 		ifi->ifi_mtu = ifr->ifr_metric;
 	if (!ioctl(sockfd, SIOCGIFHWADDR, ifr)) {
 		struct sockaddr_ll *lladdr = (void *)&ifr->ifr_hwaddr;
-		len = sizeof(struct sockaddr_ll);
+		len = lladdr->sll_halen;
 		memcpy(ifi->ifi_hwaddr, lladdr->sll_addr, len);
 		ifi->ifi_halen = lladdr->sll_halen;
 	}

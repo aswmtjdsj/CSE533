@@ -480,9 +480,8 @@ void *odr_protocol_init(void *ml, data_cb cb, int stale,
 			max_idx = tmp->ifi_index;
 		tmp = tmp->ifi_next;
 	}
-	op->ifi_table = calloc(max_idx, sizeof(struct ifi_info));
-	tmp = head;
-	while(tmp) {
+	op->ifi_table = calloc(max_idx+1, sizeof(struct ifi_info));
+	for (tmp = head; tmp; tmp = tmp->ifi_next) {
 		if (op->ifi_table[tmp->ifi_index].ifi_name[0])
 			log_warn("Duplicated interface, shouldn't use"
 			    " doalias\n");
