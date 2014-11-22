@@ -25,9 +25,14 @@ struct odr_msg_hdr {
     uint16_t msg_len;
 };
 
-struct bound_data {
+struct bound_app {
     void * fh;
     void * op;
+};
+
+struct bound_odr {
+    void * fd_p;
+    void * ml;
 };
 
 struct co_table * table_head;
@@ -95,22 +100,22 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, void * 
     test_table(table_head);
 }
 
-char * search_table_by_port(struct co_table * pt, uint16_t port) {
+struct co_table * search_table_by_port(struct co_table * pt, uint16_t port) {
     while(pt != NULL) {
         if(port == pt->port) {
             log_debug("found! %u: %s\n", pt->port, pt->sun_path);
-            return pt->sun_path;
+            return pt;
         }
         pt = pt->next;
     }
     return NULL;
 }
 
-char * search_table_by_sun_path(struct co_table * pt, char * sun_path) {
+struct co_table * search_table_by_sun_path(struct co_table * pt, char * sun_path) {
     if(sun_path == NULL) return NULL;
     while(pt != NULL) {
         if(strcmp(sun_path, pt->sun_path) == 0) {
-            return pt->sun_path;
+            return pt;
         }
         pt = pt->next;
     }
@@ -149,6 +154,14 @@ void destroy_table(struct co_table ** pt) {
     }
 }
 
+void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
+
+    uint16_t port = *((uint16_t *)data);
+    remove_from_table_by_port(&table_head, port);
+    log_debug("expired port number: %u\n", port);
+    test_table(table_head);
+}
+
 void data_callback(void * buf, uint16_t len, void * data) {
     // haven't been tested
     log_debug("gonna push message back to application layer!\n");
@@ -158,29 +171,41 @@ void data_callback(void * buf, uint16_t len, void * data) {
     struct recv_msg_hdr * r_hdr = NULL;
     int sent_size = 0;
     socklen_t tar_len = 0;
-    char * sun_path = NULL;
-    int sockfd = *(int *)data;
+    struct co_table * table_entry = NULL;
+    struct bound_odr * b_o = data;
+
+    int sockfd = *(int *)(b_o->fd_p);
+    void * ml = b_o->ml;
 
     // parse odr_msg
     memcpy(&o_hdr, buf, sizeof(struct odr_msg_hdr));
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
+    // make msg to push back to application layer
     make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, o_hdr.msg_len, &sent_size);
 
     // find port
-    sun_path = search_table_by_port(table_head, ntohs(o_hdr.dst_port));
-    if(sun_path == NULL) {
+    uint16_t port = (ntohs(o_hdr.dst_port));
+    table_entry = search_table_by_port(table_head, port);
+    if(table_entry == NULL) {
         if(ntohs(o_hdr.dst_port) == TIM_SERV_PORT) {
-            log_err("Time server port #%u is not open; time server is not running currently!\n");
+            log_err("Time server port #%u is not open; time server is not running currently!\n", TIM_SERV_PORT);
         } else {
-            log_err("The table entry (%u, %s) has expired!\n");
+            log_err("The table entry (%u, %s) has expired!\n", port, inet_ntoa((struct in_addr){o_hdr.src_ip}));
         }
         return ;
+    } else {
+        // re-init timer for that entry
+        timer_remove(ml, table_entry->timer);
+        struct timeval tv;
+        tv.tv_sec = TIM_LIV_NON_PERMAN;
+        tv.tv_usec = 0;
+        timer_insert(ml, &tv, entry_timeout, &port);
     }
 
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
     tar_addr.sun_family = AF_LOCAL;
-    strcpy(tar_addr.sun_path, sun_path);
+    strcpy(tar_addr.sun_path, table_entry->sun_path);
 
     tar_len = sizeof(tar_addr);
     // should get un fd first
@@ -190,19 +215,11 @@ void data_callback(void * buf, uint16_t len, void * data) {
     }
 }
 
-void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
-
-    uint16_t port = *((uint16_t *)data);
-    remove_from_table_by_port(&table_head, port);
-    log_debug("expired port number: %u\n", port);
-    test_table(table_head);
-}
-
 void client_callback(void * ml, void * data, int rw) {
 
-    struct bound_data * b_d = data;
-    struct fd * fh = b_d->fh;
-    struct odr_protocol * op = b_d->op;
+    struct bound_app * b_a = data;
+    struct fd * fh = b_a->fh;
+    struct odr_protocol * op = b_a->op;
     int sockfd = fd_get_fd(fh);
     int recv_size = 0;
     uint8_t sent_msg[DGRAM_MAX_LEN], sent_payload[MSG_MAX_LEN], odr_msg[ODR_MSG_MAX_LEN];
@@ -355,15 +372,18 @@ int main(int argc, const char **argv) {
 
     void * ml = mainloop_new();
 
+    struct bound_odr * b_o = (struct bound_odr *) malloc(sizeof(struct bound_odr));
+    b_o->fd_p = &sock_un_fd;
+    b_o->ml = ml;
     // init odr 
-    struct odr_protocol * op = odr_protocol_init(ml, data_callback, &sock_un_fd, staleness, get_ifi_info(AF_INET, 0));
+    struct odr_protocol * op = odr_protocol_init(ml, data_callback, b_o, staleness, get_ifi_info(AF_INET, 0));
 
     // set application response
     void * fh = fd_insert(ml, sock_un_fd, FD_READ, client_callback, NULL);
-    struct bound_data * b_d = (struct bound_data *) malloc(sizeof(struct bound_data));
-    b_d->fh = fh;
-    b_d->op = op;
-    fd_set_data(fh, b_d);
+    struct bound_app * b_a = (struct bound_app *) malloc(sizeof(struct bound_app));
+    b_a->fh = fh;
+    b_a->op = op;
+    fd_set_data(fh, b_a);
 
     mainloop_run(ml);
 
