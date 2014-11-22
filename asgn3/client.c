@@ -57,7 +57,7 @@ int main(int argc, char * const *argv) {
     char cli_sun_path[SUN_PATH_MAX_LEN] = CLI_SUN_PATH;
     int path_len = 0;
     // local host name and dest name
-    char local_host_name[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip = NULL;
+    char local_host_name[HOST_NAME_MAX_LEN], tmp_str[HOST_NAME_MAX_LEN], dest_host_name[HOST_NAME_MAX_LEN], * dest_ip = NULL;
     // server vm id
     int dest_id = -1;
     struct hostent * dest_host;
@@ -106,10 +106,11 @@ int main(int argc, char * const *argv) {
     log_debug("Client unix domain socket created, socket sun path: %s, socket structure size: %u\n", cli_addr_info.sun_path, (unsigned int) sock_len);
 
     // get local host
-    if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
+    if(gethostname(tmp_str, sizeof(tmp_str)) < 0) {
         unlink(cli_sun_path); // we should manually collect junk, maybe marked as TODO
         my_err_quit("gethostname error");
     }
+    strcpy(local_host_name, tmp_str);
 
     log_info("Current node: <%s>\n", local_host_name);
 

@@ -26,15 +26,16 @@ int color_print(int log_level, const char *prefix, const char *postfix,
 		const char *fmt, ...) {
 	if (log_level > LOG_LEVEL)
 		return 0;
-    char hostname[100];
-    if(gethostname(hostname, sizeof(hostname)) < 0) {
+    char hostname[100], str[100];
+    if(gethostname(str, sizeof(str)) < 0) {
         printf("gethostname error during color input\n");
         exit(EXIT_FAILURE);
     }
+    strcpy(hostname, str);
 	fputs(prefix, stderr);
-    fputs("<", stderr);
+    fputs("<<<", stderr);
     fputs(hostname, stderr);
-    fputs("> ", stderr);
+    fputs(">>> ", stderr);
 	va_list args;
 	va_start(args, fmt);
 	int ret = vfprintf(stderr, fmt, args);

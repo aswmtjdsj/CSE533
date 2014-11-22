@@ -99,7 +99,7 @@ int msg_recv(int sockfd, char * msg, char * src_ip, uint16_t * src_port) {
     memcpy(&hdr, recv_dgram, sizeof(struct recv_msg_hdr));
     memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), recv_size - sizeof(struct recv_msg_hdr));
 
-    src_ip = inet_ntoa((struct in_addr){hdr.src_ip});
+    strcpy(src_ip, inet_ntoa((struct in_addr){hdr.src_ip}));
     *src_port = ntohs(hdr.src_port);
     memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), ntohs(hdr.msg_len));
     msg[ntohs(hdr.msg_len)] = 0;

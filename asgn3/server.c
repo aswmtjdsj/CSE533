@@ -10,7 +10,7 @@ int main() {
 
     int sock_un_fd;
     struct sockaddr_un serv_addr, serv_addr_info;
-    char local_host_name[HOST_NAME_MAX_LEN] = "";
+    char local_host_name[HOST_NAME_MAX_LEN] = "", tmp_str[HOST_NAME_MAX_LEN];
     char time_serv_sun_path[SUN_PATH_MAX_LEN] = TIM_SERV_SUN_PATH;
     int path_len = 0;
     socklen_t sock_len = 0;
@@ -30,9 +30,10 @@ int main() {
 
     log_info("Server is going to create UNIX Domain socket!\n");
     // get local host
-    if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
+    if(gethostname(tmp_str, sizeof(tmp_str)) < 0) {
         my_err_quit("gethostname error");
     }
+    strcpy(local_host_name, tmp_str);
 
     log_info("Current node: <%s>\n", local_host_name);
 
