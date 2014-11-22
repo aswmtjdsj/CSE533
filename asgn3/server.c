@@ -16,7 +16,8 @@ int main() {
     socklen_t sock_len = 0;
 
     /* for receiving message */
-    struct sockaddr_in src_addr;
+    struct in_addr src_addr;
+    int ret = 1;
     char msg_recvd[MSG_MAX_LEN], src_ip[IP_P_MAX_LEN] = "0.0.0.0";//"130.245.156.22";
     uint16_t src_port;
     // char src_host_name[HOST_NAME_MAX_LEN] = "";
@@ -75,13 +76,17 @@ int main() {
         // get host name by ip
         memset(&src_addr, 0, sizeof(src_addr));
 
-        if((src_addr.sin_addr.s_addr = inet_addr(src_ip)) < 0) { // not inet_network
+        if((ret = inet_pton(AF_INET, src_ip, &src_addr)) < 0) {
             log_err("Input IP address [%s] to be converted to network byte order, is invalid!\n", src_ip);
             log_warn("Error Occurred! Go back to wait for incoming requests ...\n");
             continue;
         }
+        if(ret == 0) {
+            log_warn("[%s] does not contain a character string representing a valid network address in the specified address family", src_ip);
+            continue;
+        }
 
-        if((src_host = gethostbyaddr(&(src_addr.sin_addr), sizeof(src_addr.sin_addr), AF_INET)) == NULL) {
+        if((src_host = gethostbyaddr(&src_addr, sizeof(struct in_addr), AF_INET)) == NULL) {
             switch(h_errno) {
                 case HOST_NOT_FOUND:
                     log_err("Source host %s is unknown!\n", src_ip);
