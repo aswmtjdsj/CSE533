@@ -130,6 +130,8 @@ static inline
 int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 	int i, c = 0;
 	struct sockaddr_ll lladdr;
+	char *tmp = NULL;
+	size_t iplen = 0;
 	lladdr.sll_protocol = htons(ODR_MAGIC);
 	lladdr.sll_family = AF_PACKET;
 	for(i=0; i<=op->max_idx; i++) {
@@ -138,6 +140,9 @@ int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 			continue;
 		if (i == exclude)
 			continue;
+		log_info("Send packet through %s (id: %d, ip: %s)\n",
+		    op->ifi_table[i].ifi_name, i,
+		    sa_ntop(op->ifi_table[i].ifi_addr, &tmp, &iplen));
 		memset(lladdr.sll_addr, 255, IFHWADDRLEN);
 		lladdr.sll_ifindex = i;
 		lladdr.sll_halen = op->ifi_table[i].ifi_halen;
@@ -150,6 +155,7 @@ int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 		else
 			c++;
 	}
+	free(tmp);
 	return c;
 }
 static inline
@@ -430,7 +436,10 @@ static void odr_read_cb(void *ml, void *data, int rw){
 		return;
 	}
 
-	int mtu = op->ifi_table[addr.sll_ifindex].ifi_mtu;
+	int idx = addr.sll_ifindex;
+	int mtu = op->ifi_table[idx].ifi_mtu;
+	char *tmp = NULL;
+	size_t iplen = 0;
 	if (ret > mtu && mtu)
 		log_warn("Packet larger than mtu (%d>%d)\n",
 		    ret, mtu);
@@ -438,7 +447,10 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	ret = recvfrom(op->fd, op->buf, op->buf_len, 0,
 	    (struct sockaddr *)&addr, &len);
 	op->msg_len = ret;
-	log_info("Packet coming in from %d\n", addr.sll_ifindex);
+	log_info("Packet coming in from %s(id:%d, ip:%s)\n",
+	    op->ifi_table[idx].ifi_name, idx,
+	    sa_ntop(op->ifi_table[idx].ifi_addr, &tmp, &iplen));
+	free(tmp);
 
 	struct odr_hdr *hdr = op->buf;
 	dump_odr_hdr(hdr);
