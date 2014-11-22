@@ -104,6 +104,7 @@ int msg_recv(int sockfd, char * msg, char * src_ip, uint16_t * src_port) {
     memcpy(msg, recv_dgram + sizeof(struct recv_msg_hdr), ntohs(hdr.msg_len));
     msg[ntohs(hdr.msg_len)] = 0;
 
+    log_debug("msg_recv, source ip: %s, source port: %u\n", src_ip, *src_port);
     log_debug("Message received!\n");
     return 0;
 }
