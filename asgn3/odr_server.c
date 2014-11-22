@@ -217,6 +217,7 @@ void data_callback(void * buf, uint16_t len, void * data) {
         log_err("sendto error\n");
         return ;
     }
+    log_debug("msg forwarded! data callback done!\n");
 }
 
 void client_callback(void * ml, void * data, int rw) {
