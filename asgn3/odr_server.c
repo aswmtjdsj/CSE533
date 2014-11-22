@@ -103,7 +103,7 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, void * 
 struct co_table * search_table_by_port(struct co_table * pt, uint16_t port) {
     while(pt != NULL) {
         if(port == pt->port) {
-            log_debug("found! %u: %s\n", pt->port, pt->sun_path);
+            log_debug("found! %u: %s, %16x\n", pt->port, pt->sun_path, pt->timer);
             return pt;
         }
         pt = pt->next;
@@ -205,6 +205,7 @@ void data_callback(void * buf, uint16_t len, void * data) {
             timer_insert(ml, &tv, entry_timeout, &port);
         }
     }
+    log_err("gogogo\n");
 
     log_debug("gonna send message to table_entry with port#%u, sun_path [%s]\n", table_entry->port, table_entry->sun_path);
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
