@@ -206,6 +206,7 @@ void data_callback(void * buf, uint16_t len, void * data) {
         }
     }
 
+    log_debug("gonna send message to table_entry with port#%u, sun_path [%s]\n", table_entry->port, table_entry->sun_path);
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
     tar_addr.sun_family = AF_LOCAL;
     strcpy(tar_addr.sun_path, table_entry->sun_path);
@@ -301,7 +302,6 @@ SEND_ODR_MSG:
 
     // send msg via odr
     send_msg_api(op, s_hdr.dst_ip, odr_msg, odr_msg_len, s_hdr.flag);
-
 }
 
 int main(int argc, const char **argv) {
@@ -326,7 +326,7 @@ int main(int argc, const char **argv) {
     srand(time(NULL));
     // table: port<->sun_path
     table_head = NULL; // init
-    log_debug("ODR server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
+    log_debug("Time server, info: %u, sun_path: %s\n", TIM_SERV_PORT, ODR_SUN_PATH);
     insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
     // just test
     // destroy_table(&table_head);
@@ -360,8 +360,10 @@ int main(int argc, const char **argv) {
         my_err_quit("bind error");
     }
 
-    if (chmod(ODR_SUN_PATH, 0777) < 0)
-        log_err("chmod error %s\n", strerror(errno));
+    if (chmod(ODR_SUN_PATH, 0777) < 0) {
+        unlink(ODR_SUN_PATH); // we should manually collect junk, maybe marked as TODO
+        my_err_quit("chmod error");
+    }
 
     // after binding, get sock info
     sock_len = sizeof(odr_addr_info);

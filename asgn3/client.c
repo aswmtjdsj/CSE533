@@ -198,7 +198,7 @@ SEND_MESSAGE:
     }
     alarm(0); // successfully received something
 
-    log_info("Client at node <%s>: received from <%s> [%s]\n", local_host_name, dest_host->h_name, msg_recvd);
+    log_info("Client at node <%s>: received from <%s> {%s}\n", local_host_name, dest_host->h_name, msg_recvd);
 
     // if all go on well and finished, then go back to promption
     log_info("Current work done! Go back to destination selection!\n");

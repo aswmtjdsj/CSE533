@@ -11,7 +11,6 @@ int main() {
     int sock_un_fd;
     struct sockaddr_un serv_addr, serv_addr_info;
     char local_host_name[HOST_NAME_MAX_LEN] = "", tmp_str[HOST_NAME_MAX_LEN];
-    char time_serv_sun_path[SUN_PATH_MAX_LEN] = TIM_SERV_SUN_PATH;
     int path_len = 0;
     socklen_t sock_len = 0;
 
@@ -37,31 +36,31 @@ int main() {
 
     log_info("Current node: <%s>\n", local_host_name);
 
-    unlink(time_serv_sun_path);
-    path_len = strlen(time_serv_sun_path);
+    unlink(TIM_SERV_SUN_PATH);
+    path_len = strlen(TIM_SERV_SUN_PATH);
 
     // create unix domain socket
     if((sock_un_fd = socket(AF_LOCAL, SOCK_DGRAM, 0)) < 0) {
-        unlink(time_serv_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(TIM_SERV_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("socket error");
     }
 
     // init serv addr
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sun_family = AF_LOCAL;
-    strncpy(serv_addr.sun_path, time_serv_sun_path, path_len);
+    strncpy(serv_addr.sun_path, TIM_SERV_SUN_PATH, path_len);
     serv_addr.sun_path[path_len] = 0;
 
     // bind
     if(bind(sock_un_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        unlink(time_serv_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(TIM_SERV_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("bind error");
     }
 
     // after binding, get sock info
     sock_len = sizeof(serv_addr_info);
     if(getsockname(sock_un_fd, (struct sockaddr *) &serv_addr_info, &sock_len) < 0) {
-        unlink(time_serv_sun_path); // we should manually collect junk, maybe marked as TODO
+        unlink(TIM_SERV_SUN_PATH); // we should manually collect junk, maybe marked as TODO
         my_err_quit("getsockname error");
     }
 
@@ -124,7 +123,7 @@ int main() {
     // garbage collection
     log_info("All work done!\n");
     log_info("Cleaning resources ...\n");
-    unlink(time_serv_sun_path);
+    unlink(TIM_SERV_SUN_PATH);
     log_info("Quit now!\n");
     return 0;
 }
