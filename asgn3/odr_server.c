@@ -13,7 +13,7 @@ struct co_table {
     char sun_path[SUN_PATH_MAX_LEN];
 	//struct timeval tv;
 	//struct timeval remain_tv;
-    int time_to_live; // ms?
+    void * timer;
     struct co_table * next;
 };
 
@@ -66,14 +66,15 @@ void make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload, i
 
 void test_table(struct co_table * pt) {
     int cnt = 0;
-    log_debug("index\tport\tsun_path\ttime_to_live\n");
+    log_debug("!!!Test table!!!\n");
+    log_debug("index\tport\tsun_path\tpermanent\n");
     while(pt != NULL) {
-        log_debug("#%d\t%u\t%s\t%d\n", cnt++, pt->port, pt->sun_path, pt->time_to_live);
+        log_debug("#%d\t%u\t%s\t%s\n", cnt++, pt->port, pt->sun_path, (pt->timer!=NULL)?"NO":"YES");
         pt = pt->next;
     }
 }
 
-void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, int time_to_live) {
+void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, void * timer) {
     struct co_table * cur = *pt;
     while(cur != NULL) {
         if(strcmp(cur->sun_path, sun_path) == 0) {
@@ -87,7 +88,7 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, int tim
     struct co_table * new_table = (struct co_table *) malloc(sizeof(struct co_table));
     new_table->port = port;
     strcpy(new_table->sun_path, sun_path);
-    new_table->time_to_live = time_to_live;
+    new_table->timer = timer;
     new_table->next = *pt;
     *pt = new_table;
 
@@ -97,6 +98,7 @@ void insert_table(struct co_table ** pt, uint16_t port, char * sun_path, int tim
 char * search_table_by_port(struct co_table * pt, uint16_t port) {
     while(pt != NULL) {
         if(port == pt->port) {
+            log_debug("found! %u: %s\n", pt->port, pt->sun_path);
             return pt->sun_path;
         }
         pt = pt->next;
@@ -116,20 +118,39 @@ char * search_table_by_sun_path(struct co_table * pt, char * sun_path) {
 }
 
 // remove from table when timeout
-void remove_from_table(struct co_table * pt) {
+void remove_from_table_by_port(struct co_table ** pt, uint16_t port) {
+    struct co_table * prev = NULL, * head = *pt;
+    while(head != NULL) {
+        if(head->port == port) {
+            log_warn("Entry with port#%u, sun_path \"%s\" gonna be removed, due to expiration!\n", head->port, head->sun_path);
+            if(prev != NULL) {
+                prev->next = head->next;
+            } else {
+                *pt = head->next;
+            }
+            free(head);
+            return ;
+        }
+
+        prev = head;
+        head = head->next;
+    }
+
+    log_err("Entry gonna be removed, with port#%u not found! Maybe something wrong!\n", port);
 }
 
-void destroy_table(struct co_table * pt) {
+void destroy_table(struct co_table ** pt) {
     log_debug("Destorying the mapping table ...\n");
     struct co_table * next = NULL;
-    while(pt != NULL) {
-        next = pt->next;
-        free(pt);
-        pt = next;
+    while(*pt != NULL) {
+        next = (*pt)->next;
+        free(*pt);
+        (*pt) = next;
     }
 }
 
 void data_callback(void * buf, uint16_t len, void * data) {
+    // haven't been tested
     log_debug("gonna push message back to application layer!\n");
     uint8_t payload[MSG_MAX_LEN], send_dgram[DGRAM_MAX_LEN];
     struct sockaddr_un tar_addr;
@@ -145,9 +166,6 @@ void data_callback(void * buf, uint16_t len, void * data) {
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
     make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, o_hdr.msg_len, &sent_size);
-    /*memcpy(send_dgram, r_hdr, sizeof(struct send_msg_hdr));
-    memcpy(send_dgram + sizeof(struct send_msg_hdr), payload, o_hdr.msg_len);
-    sent_size = sizeof(struct send_msg_hdr) + o_hdr.msg_len;*/
 
     // find port
     sun_path = search_table_by_port(table_head, ntohs(o_hdr.dst_port));
@@ -170,6 +188,14 @@ void data_callback(void * buf, uint16_t len, void * data) {
         log_err("sendto error\n");
         return ;
     }
+}
+
+void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
+
+    uint16_t port = *((uint16_t *)data);
+    remove_from_table_by_port(&table_head, port);
+    log_debug("expired port number: %u\n", port);
+    test_table(table_head);
 }
 
 void client_callback(void * ml, void * data, int rw) {
@@ -210,9 +236,10 @@ void client_callback(void * ml, void * data, int rw) {
     }
 
     if(search_table_by_sun_path(table_head, cli_addr.sun_path) != NULL) {
-        log_warn("Time client with sun_path \"%s\" has existed in mapping table! No need to generate random port!\n", cli_addr.sun_path);
+        log_warn("Time client with sun_path \"%s\" is already in mapping table! No need to generate random port!\n", cli_addr.sun_path);
         goto SEND_ODR_MSG;
     }
+
 GEN_RAND_PORT:
 
     src_port = rand() % MAX_PORT_NUM;
@@ -231,8 +258,14 @@ GEN_RAND_PORT:
         goto GEN_RAND_PORT;
     }
 
+
+    // add timer for non-permanent entry
+    struct timeval tv;
+    tv.tv_sec = TIM_LIV_NON_PERMAN;
+    tv.tv_usec = 0;
+
     // insert new non-permanent client sun_path and corresponding port
-    insert_table(&table_head, src_port, cli_addr.sun_path, TIM_LIV_NON_PERMAN);
+    insert_table(&table_head, src_port, cli_addr.sun_path, timer_insert(ml, &tv, entry_timeout, &src_port));
 
 SEND_ODR_MSG:
     payload_len = recv_size - sizeof(struct send_msg_hdr);
@@ -275,7 +308,10 @@ int main(int argc, const char **argv) {
     // table: port<->sun_path
     table_head = NULL; // init
     log_debug("ODR server, info: %d, sun_path: %s\n", TIM_SERV_PORT, TIM_SERV_SUN_PATH);
-    insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, TIM_LIV_PERMAN);
+    insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
+    // just test
+    // destroy_table(&table_head);
+    // test_table(table_head);
 
     if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
         my_err_quit("gethostname error");
@@ -334,7 +370,7 @@ int main(int argc, const char **argv) {
     log_info("All work done!\n");
     log_info("Cleaning resources ...\n");
     free(ml);
-    destroy_table(table_head);
+    destroy_table(&table_head);
     log_info("ODR Process quiting!\n");
 
 	return 0;
