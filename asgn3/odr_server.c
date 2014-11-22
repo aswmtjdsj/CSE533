@@ -182,7 +182,7 @@ void data_callback(void * buf, uint16_t len, void * data) {
     memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
 
     // make msg to push back to application layer
-    make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, o_hdr.msg_len, &sent_size);
+    make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, ntohs(o_hdr.msg_len), &sent_size);
 
     // find port
     uint16_t port = (ntohs(o_hdr.dst_port));
