@@ -188,19 +188,22 @@ void data_callback(void * buf, uint16_t len, void * data) {
     uint16_t port = (ntohs(o_hdr.dst_port));
     table_entry = search_table_by_port(table_head, port);
     if(table_entry == NULL) {
-        if(ntohs(o_hdr.dst_port) == TIM_SERV_PORT) {
+        if(port == TIM_SERV_PORT) {
             log_err("Time server port #%u is not open; time server is not running currently!\n", TIM_SERV_PORT);
         } else {
             log_err("The table entry (%u, %s) has expired!\n", port, inet_ntoa((struct in_addr){o_hdr.src_ip}));
         }
         return ;
     } else {
-        // re-init timer for that entry
-        timer_remove(ml, table_entry->timer);
-        struct timeval tv;
-        tv.tv_sec = TIM_LIV_NON_PERMAN;
-        tv.tv_usec = 0;
-        timer_insert(ml, &tv, entry_timeout, &port);
+        // if server port, then no need to deal with timer, as it's the permanent entry and has no timer
+        if(port != TIM_SERV_PORT) {
+            // re-init timer for that non-permanent entry
+            timer_remove(ml, table_entry->timer);
+            struct timeval tv;
+            tv.tv_sec = TIM_LIV_NON_PERMAN;
+            tv.tv_usec = 0;
+            timer_insert(ml, &tv, entry_timeout, &port);
+        }
     }
 
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
@@ -274,7 +277,6 @@ GEN_RAND_PORT:
         log_debug("Poor you! How back luck to generate a conflict port number!\n");
         goto GEN_RAND_PORT;
     }
-
 
     // add timer for non-permanent entry
     struct timeval tv;
