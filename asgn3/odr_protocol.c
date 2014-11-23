@@ -481,6 +481,8 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 	op->cbdata = data;;
 	op->route_table = calloc(1, sizeof(struct skip_list_head));
 	op->known_hosts = calloc(1, sizeof(struct skip_list_head));
+	op->pending_msgs = NULL;
+	op->bid = 0;
 	skip_list_init_head(op->route_table);
 	skip_list_init_head(op->known_hosts);
 

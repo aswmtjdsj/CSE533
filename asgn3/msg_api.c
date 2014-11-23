@@ -31,12 +31,12 @@ void make_send_msg(uint8_t * send_msg, struct send_msg_hdr * s_hdr, void * paylo
     log_debug("send_msg: {hdr: {dst_ip: \"%s\", dst_port: %u, flag: %d, msg_len: %d}, payload: \"%s\", len: %d}\n", inet_ntoa((struct in_addr){s_hdr->dst_ip}), ntohs(s_hdr->dst_port), ntohs(s_hdr->flag), ntohs(s_hdr->msg_len), payload, *send_msg_len);
 }
 
-struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr * hdr, char * ip, uint16_t port, int len) {
+struct recv_msg_hdr * make_recv_hdr(struct recv_msg_hdr * hdr, uint32_t ip, uint16_t port, int len) {
     if(hdr == NULL) {
         hdr = malloc(sizeof(struct recv_msg_hdr));
     }
 
-    hdr->src_ip = inet_addr(ip);
+    hdr->src_ip = ip;
     hdr->src_port = htons(port);
     hdr->msg_len = htons(len);
 

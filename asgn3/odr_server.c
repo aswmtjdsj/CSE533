@@ -166,9 +166,9 @@ void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
 void data_callback(void * buf, uint16_t len, void * data) {
     // haven't been tested
     log_debug("gonna push message back to application layer!\n");
-    uint8_t payload[MSG_MAX_LEN], send_dgram[DGRAM_MAX_LEN];
+    uint8_t send_dgram[DGRAM_MAX_LEN];
     struct sockaddr_un tar_addr;
-    struct odr_msg_hdr o_hdr;
+    struct odr_msg_hdr *o_hdr = (void *)buf;
     struct recv_msg_hdr * r_hdr = NULL;
     int sent_size = 0;
     socklen_t tar_len = 0;
@@ -179,24 +179,27 @@ void data_callback(void * buf, uint16_t len, void * data) {
     void * ml = b_o->ml;
 
     // parse odr_msg
-    memcpy(&o_hdr, buf, sizeof(struct odr_msg_hdr));
-    memcpy(payload, buf + sizeof(struct odr_msg_hdr), len - sizeof(struct odr_msg_hdr));
-
     // make msg to push back to application layer
-    make_recv_msg(send_dgram, make_recv_hdr(r_hdr, inet_ntoa((struct in_addr){o_hdr.src_ip}), ntohs(o_hdr.src_port), ntohs(o_hdr.msg_len)), payload, ntohs(o_hdr.msg_len), &sent_size);
+    make_recv_msg(send_dgram,
+                  make_recv_hdr(r_hdr, o_hdr->src_ip,
+                      ntohs(o_hdr->src_port), ntohs(o_hdr->msg_len)),
+                  o_hdr+1, ntohs(o_hdr->msg_len), &sent_size);
 
     // find port
-    uint16_t port = (ntohs(o_hdr.dst_port));
+    uint16_t port = (ntohs(o_hdr->dst_port));
     table_entry = search_table_by_port(table_head, port);
     if(table_entry == NULL) {
         if(port == TIM_SERV_PORT) {
-            log_warn("Time server port #%u is not open; time server is not running currently!\n", TIM_SERV_PORT);
+            log_warn("Time server port #%u is not open; time server is not "
+                "running currently!\n", TIM_SERV_PORT);
         } else {
-            log_info("The table entry (%u, %s) has expired!\n", port, inet_ntoa((struct in_addr){o_hdr.src_ip}));
+            log_info("The table entry (%u, %s) has expired!\n", port,
+                inet_ntoa((struct in_addr){o_hdr->src_ip}));
         }
         return ;
     } else {
-        // if server port, then no need to deal with timer, as it's the permanent entry and has no timer
+        // if server port, then no need to deal with timer, as it's the
+        // permanent entry and has no timer
         if(port != TIM_SERV_PORT) {
             // re-init timer for that non-permanent entry
             free(timer_get_data(table_entry->timer));
@@ -210,7 +213,6 @@ void data_callback(void * buf, uint16_t len, void * data) {
             timer_insert(ml, &tv, entry_timeout, pp);
         }
     }
-    log_err("gogogo\n");
 
     log_debug("gonna send message to table_entry with port#%u, sun_path [%s]\n", table_entry->port, table_entry->sun_path);
     memset(&tar_addr, 0, sizeof(struct sockaddr_un));
