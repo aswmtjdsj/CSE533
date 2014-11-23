@@ -271,7 +271,7 @@ void client_callback(void *ml, void * data, int rw) {
 	if (te) {
 		log_debug("application with sun_path \"%s\" is already in "
 		    "mapping table (port: %d), No need to generate"
-		    "random port\n", te->port, cli_addr.sun_path);
+		    "random port\n", cli_addr.sun_path, te->port);
 		src_port = te->port;
 	} else {
 		struct co_table *cur;
