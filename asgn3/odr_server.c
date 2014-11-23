@@ -49,12 +49,12 @@ make_odr_msg_hdr(struct odr_msg_hdr * hdr, uint16_t src_port, uint32_t dst_ip,
 	return hdr;
 }
 
-static inline void
-make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload,
-		  int payload_len, int * odr_msg_size) {
+static inline int
+make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload) {
+	int payload_len = ntohs(hdr->msg_len);
 	memcpy(odr_msg, hdr, sizeof(struct odr_msg_hdr));
 	memcpy(odr_msg + sizeof(struct odr_msg_hdr), payload, payload_len);
-	*odr_msg_size = sizeof(struct odr_msg_hdr) + payload_len;
+	int ret = sizeof(struct odr_msg_hdr) + payload_len;
 
 	char msg_debug[MSG_MAX_LEN];
 	strncpy(msg_debug, payload, payload_len);
@@ -66,8 +66,9 @@ make_odr_msg(uint8_t * odr_msg, struct odr_msg_hdr * hdr, void * payload,
 	log_debug("odr_msg: {hdr: {src_port: %u, dst_ip: \"%s\", dst_port: %u,"
 	    " msg_len: %d}, payload: \"%s\", len: %d}\n", ntohs(hdr->src_port),
 	    dst_ip_p, ntohs(hdr->dst_port), ntohs(hdr->msg_len), msg_debug,
-	    *odr_msg_size);
-	}
+	    ret);
+	return ret;
+}
 
 static inline void
 test_table(struct co_table * pt) {
@@ -256,9 +257,7 @@ void client_callback(void *ml, void * data, int rw) {
 	socklen_t cli_len = sizeof(struct sockaddr_un);
 	struct send_msg_hdr *s_hdr;
 	struct odr_msg_hdr o_hdr;
-	uint32_t src_ip;
 	uint16_t src_port;
-	int payload_len = 0, odr_msg_len;
 
 	// recv the time client request
 	if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0,
@@ -295,17 +294,15 @@ void client_callback(void *ml, void * data, int rw) {
 	}
 
 	s_hdr = (void *)sent_msg;
-	payload_len = s_hdr->msg_len;
 	sent_payload = (void *)(s_hdr+1);
 	// parse application message
 	//
-	make_odr_msg(odr_msg,
-		     make_odr_msg_hdr(&o_hdr, htons(src_port),
-				      s_hdr->dst_ip, s_hdr->dst_port,
-				      htons(payload_len)),
-		     sent_payload,
-		     payload_len,
-		     &odr_msg_len);
+	int odr_msg_len =
+	    make_odr_msg(odr_msg,
+			 make_odr_msg_hdr(&o_hdr, htons(src_port),
+					 s_hdr->dst_ip, s_hdr->dst_port,
+					 s_hdr->msg_len),
+			 sent_payload);
 
 	log_debug("going to send message via odr!\n");
 
@@ -318,8 +315,7 @@ int main(int argc, const char **argv) {
 	char local_host_name[HOST_NAME_MAX_LEN];
 	int sock_un_fd;
 	int path_len;
-	socklen_t sock_len = 0;
-	struct sockaddr_un odr_addr, odr_addr_info;
+	struct sockaddr_un odr_addr;
 	int staleness = 0;
 	if(argc < 2) {
 		log_err("Number of parameters incorrect!\n");
