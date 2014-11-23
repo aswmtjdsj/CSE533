@@ -60,6 +60,12 @@ static inline int
 send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 		   int direct) {
 	struct odr_hdr *hdr = msg->buf;
+	if (hdr->daddr == op->myip) {
+		//Send to local, deliever it directly
+		op->cb((void *)(hdr+1), ntohs(hdr->payload_len), hdr->saddr,
+		    op->cbdata);
+		return 1;
+	}
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &hdr->daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
