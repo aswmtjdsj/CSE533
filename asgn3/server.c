@@ -72,6 +72,7 @@ int main() {
         if(msg_recv(sock_un_fd, msg_recvd, src_ip, &src_port) < 0) {
             my_err_quit("msg_recv error");
         }
+        log_info("Message from %s:%d\n", src_ip, src_port);
 
         // get host name by ip
         memset(&src_addr, 0, sizeof(src_addr));

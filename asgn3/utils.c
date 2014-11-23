@@ -130,6 +130,7 @@ get_ifi_info(int family, int doaliases) {
 	}
 
 	ifc.ifc_req = NULL;
+	ifc.ifc_len = 0;
 	/* initial buffer size guess */
 	if (ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
 		log_err("ioctl failed: %s\n", strerror(errno));

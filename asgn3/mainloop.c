@@ -272,3 +272,15 @@ void timer_set_cb(void *th, timer_cb cb){
 	struct timer *t = th;
 	t->cb = cb;
 }
+
+void *fd_get_data(void *fh){
+	return ((struct fd *)fh)->data;
+}
+
+void *timer_get_data(void *th){
+	return ((struct timer *)th)->data;
+}
+
+void timer_set_data(void *th, void *data){
+	((struct timer *)th)->data = data;
+}

@@ -160,6 +160,7 @@ void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
     remove_from_table_by_port(&table_head, port);
     log_debug("expired port number: %u\n", port);
     test_table(table_head);
+    free(data);
 }
 
 void data_callback(void * buf, uint16_t len, void * data) {
@@ -189,20 +190,24 @@ void data_callback(void * buf, uint16_t len, void * data) {
     table_entry = search_table_by_port(table_head, port);
     if(table_entry == NULL) {
         if(port == TIM_SERV_PORT) {
-            log_err("Time server port #%u is not open; time server is not running currently!\n", TIM_SERV_PORT);
+            log_warn("Time server port #%u is not open; time server is not running currently!\n", TIM_SERV_PORT);
         } else {
-            log_err("The table entry (%u, %s) has expired!\n", port, inet_ntoa((struct in_addr){o_hdr.src_ip}));
+            log_info("The table entry (%u, %s) has expired!\n", port, inet_ntoa((struct in_addr){o_hdr.src_ip}));
         }
         return ;
     } else {
         // if server port, then no need to deal with timer, as it's the permanent entry and has no timer
         if(port != TIM_SERV_PORT) {
             // re-init timer for that non-permanent entry
+            free(timer_get_data(table_entry->timer));
             timer_remove(ml, table_entry->timer);
             struct timeval tv;
             tv.tv_sec = TIM_LIV_NON_PERMAN;
             tv.tv_usec = 0;
-            timer_insert(ml, &tv, entry_timeout, &port);
+
+            uint16_t *pp = malloc(sizeof(*pp));
+            *pp = port;
+            timer_insert(ml, &tv, entry_timeout, pp);
         }
     }
     log_err("gogogo\n");
@@ -258,38 +263,31 @@ void client_callback(void * ml, void * data, int rw) {
         head = head->ifi_next;
     }
 
-    if(search_table_by_sun_path(table_head, cli_addr.sun_path) != NULL) {
-        log_warn("Time client with sun_path \"%s\" is already in mapping table! No need to generate random port!\n", cli_addr.sun_path);
-        goto SEND_ODR_MSG;
+    struct co_table *te = search_table_by_sun_path(table_head, cli_addr.sun_path);
+    if (te) {
+        log_debug("application with sun_path \"%s\" is already in mapping "
+            "table (port: %d), No need to generate random port\n", te->port,
+            cli_addr.sun_path);
+        src_port = te->port;
+    } else {
+        struct co_table *cur;
+        do {
+            src_port = rand() % MAX_PORT_NUM;
+            // a stupid method to avoid duplicate port number
+            cur = search_table_by_port(table_head, src_port);
+        } while(src_port == TIM_SERV_PORT || cur);
+
+        // add timer for non-permanent entry
+        struct timeval tv;
+        tv.tv_sec = TIM_LIV_NON_PERMAN;
+        tv.tv_usec = 0;
+
+        uint16_t *pp = malloc(sizeof(*pp));
+        *pp = src_port;
+        // insert new non-permanent client sun_path and corresponding port
+        insert_table(&table_head, src_port, cli_addr.sun_path, timer_insert(ml, &tv, entry_timeout, pp));
     }
 
-GEN_RAND_PORT:
-
-    src_port = rand() % MAX_PORT_NUM;
-    // a stupid method to avoid duplicate port number
-    struct co_table * cur = table_head;
-    while(cur) {
-        if(cur->port == src_port) {
-            log_debug("Poor you! How back luck to generate a conflict port number!\n");
-            goto GEN_RAND_PORT;
-        }
-        cur = cur->next;
-    }
-
-    if(src_port == TIM_SERV_PORT) {
-        log_debug("Poor you! How back luck to generate a conflict port number!\n");
-        goto GEN_RAND_PORT;
-    }
-
-    // add timer for non-permanent entry
-    struct timeval tv;
-    tv.tv_sec = TIM_LIV_NON_PERMAN;
-    tv.tv_usec = 0;
-
-    // insert new non-permanent client sun_path and corresponding port
-    insert_table(&table_head, src_port, cli_addr.sun_path, timer_insert(ml, &tv, entry_timeout, &src_port));
-
-SEND_ODR_MSG:
     payload_len = recv_size - sizeof(struct send_msg_hdr);
     // parse application message
     memcpy(&s_hdr, sent_msg, sizeof(struct send_msg_hdr));
