@@ -219,17 +219,35 @@ int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
 }
 //daddr and hop_count is in network order
 static inline void
-route_table_update(struct odr_protocol *op, uint32_t daddr,
-		   uint32_t hop_count, struct sockaddr_ll *addr) {
+route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
+		   struct sockaddr_ll *addr) {
+	uint32_t daddr = hdr->saddr;
+	uint32_t hop_count = ntohs(hdr->hop_count);
+	uint16_t flags = ntohs(hdr->flags);
 	//Update route table from information in the packet
 	if (daddr == op->myip)
 		//No action needed
 		return;
+
+	log_info("Updating route table due to:\n");
+	if (flags & ODR_RADV) {
+		if (flags & ODR_DATA)
+			log_info("\tData packet (already forwarded by another "
+			    "node, we are just using the infomation to update"
+			    " route table\n");
+		else if (flags & ODR_RREQ)
+			log_info("\tRREQ (RREP already sent by another node)\n");
+		else
+			log_info("\tRoute advertisement\n");
+	} else if (flags & ODR_DATA)
+		log_info("Data packet\n");
+	else if (flags & ODR_RREQ)
+		log_info("RREQ\n");
+
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
 	int send_radv = 1;
-	hop_count = ntohs(hop_count);
 	if (!res || re->dst_ip != daddr) {
 		log_info("New route to %s through %s, hop: %d\n",
 		    inet_ntoa((struct in_addr){daddr}),
@@ -271,7 +289,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 	if (send_radv) {
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
-		xhdr->flags = htons(ODR_RADV);
+		xhdr->flags = hdr->flags;
 		xhdr->hop_count = htons(hop_count+1);
 		xhdr->payload_len = 0;
 		xhdr->bid = htonl(op->bid++);
@@ -313,7 +331,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
+	route_table_update(op, hdr, addr);
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
@@ -391,7 +409,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
+	route_table_update(op, hdr, addr);
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
@@ -410,7 +428,7 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
+	route_table_update(op, hdr, addr);
 
 	if (hdr->daddr != op->myip) {
 		//Route the packet
@@ -432,7 +450,7 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr->saddr, hdr->hop_count, addr);
+	route_table_update(op, hdr, addr);
 }
 
 static inline void
@@ -473,14 +491,14 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	struct odr_hdr *hdr = op->buf;
 	dump_odr_hdr(hdr);
 	int flags = ntohs(hdr->flags);
-	if (flags & ODR_RREQ)
+	if (flags & ODR_RADV)
+		radv_handler(op, &addr);
+	else if (flags & ODR_RREQ)
 		rreq_handler(op, &addr);
 	else if (flags & ODR_RREP)
 		rrep_handler(op, &addr);
 	else if (flags & ODR_DATA)
 		data_handler(op, &addr);
-	else if (flags & ODR_RADV)
-		radv_handler(op, &addr);
 }
 void *odr_protocol_init(void *ml, data_cb cb, void *data, int stale) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
