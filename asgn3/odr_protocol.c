@@ -234,7 +234,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		if (flags & ODR_DATA)
 			log_info("\tData packet (already forwarded by another "
 			    "node, we are just using the infomation to update"
-			    " route table\n");
+			    " route table)\n");
 		else if (flags & ODR_RREQ)
 			log_info("\tRREQ (RREP already sent by another node)\n");
 		else if (flags & ODR_RREP)
@@ -330,7 +330,8 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 				tmp = tmp->next;
 			}
 		}
-	}
+	} else
+		log_info("Nothing to update, route table unchanged\n");
 }
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
