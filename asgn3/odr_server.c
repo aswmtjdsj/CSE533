@@ -178,7 +178,7 @@ void entry_timeout(void * ml, void * data, const struct timeval * elapse) {
 
 void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 	// haven't been tested
-	log_debug("gonna push message back to application layer!\n");
+	log_info("Received message from ODR!\n");
 	uint8_t send_dgram[DGRAM_MAX_LEN];
 	struct sockaddr_un tar_addr;
 	struct odr_msg_hdr *o_hdr = (void *)buf;
@@ -246,7 +246,7 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 
 	}
 	else
-		log_debug("msg forwarded! data callback done!\n");
+		log_info("Message sent to application layer! data callback done!\n");
 }
 
 void client_callback(void *ml, void * data, int rw) {
@@ -265,7 +265,7 @@ void client_callback(void *ml, void * data, int rw) {
 	struct odr_msg_hdr o_hdr;
 	uint16_t src_port;
 
-	log_debug("ODR server gonna retrieve message from application layer!\n");
+	log_info("ODR process received message from application layer!\n");
 	// recv the time client request
 	if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0,
 				 (struct sockaddr *) &cli_addr, &cli_len)) < 0)
@@ -318,6 +318,8 @@ void client_callback(void *ml, void * data, int rw) {
 
 	// send msg via odr
 	send_msg_api(op, s_hdr->dst_ip, odr_msg, odr_msg_len, s_hdr->flag);
+
+	log_info("ODR process sent message to its destination, via ODR!\n");
 }
 
 int main(int argc, const char **argv) {
