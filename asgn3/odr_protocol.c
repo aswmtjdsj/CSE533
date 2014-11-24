@@ -235,16 +235,17 @@ int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
 	return send_msg(op, msg, flags);
 }
 //daddr and hop_count is in network order
-static inline void
+static inline int
 route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		   struct sockaddr_ll *addr, int noradv) {
 	uint32_t daddr = hdr->saddr;
 	uint32_t hop_count = ntohs(hdr->hop_count);
 	uint16_t flags = ntohs(hdr->flags);
+	int ret = 1;
 	//Update route table from information in the packet
 	if (daddr == op->myip)
 		//No action needed
-		return;
+		return 0;
 
 	log_info("Updating route table due to:\n");
 	if (flags & ODR_RADV) {
@@ -290,14 +291,15 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		skip_list_insert(op->route_table, &re->h,
 		    &re->dst_ip, addr_cmp);
 	} else {
-		if (re->hop_count > hop_count) {
+		if (re->hop_count > hop_count || flags & ODR_FORCED) {
 			log_info("Update route to %s(%s) through %s, hop: %d"
-			    " to through %s, hop: %d\n",
+			    " to through %s, hop: %d %s\n",
 			    inet_ntoa((struct in_addr){daddr}), sname,
 			    mac_tostring(re->route_mac, re->halen),
 			    re->hop_count,
 			    mac_tostring(addr->sll_addr, addr->sll_halen),
-			    hop_count);
+			    hop_count,
+			    flags&ODR_FORCED ? "(forced)" : "");
 			re->hop_count = hop_count;
 			re->ifi_idx = addr->sll_ifindex;
 			memcpy(re->route_mac, addr->sll_addr, addr->sll_halen);
@@ -309,9 +311,11 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 			    sname, mac_tostring(re->route_mac, re->halen),
 			    re->hop_count);
 			re->timestamp = get_timestamp();
+			noradv = 1;
+			ret = 0;
 		} else {
 			log_info("Nothing to update, route table unchanged\n");
-			return;
+			return 0;
 		}
 	}
 
@@ -357,6 +361,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 			tmp = tmp->next;
 		}
 	}
+	return ret;
 }
 static inline struct host_entry *
 host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
@@ -389,6 +394,7 @@ host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
+	uint16_t flags = hdr->flags;
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
@@ -396,27 +402,34 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	    ntohl(hdr->bid));
 	if (he) {
 		log_info("Packet broadcast id is less than the last"
-		    "broadcast id recorded (%d < %d), possibly looping"
-		    "packets. discarding...\n", ntohl(hdr->bid),
+		    "broadcast id recorded (%d < %d), duplicated RREQ.\n",
+		    ntohl(hdr->bid),
 		    he->last_broadcast_id+1);
-		return;
+		//Removing the forced bit
+		flags &= ~ODR_FORCED;
+		hdr->flags = htons(flags);
 	}
 
 	if (hdr->daddr == op->myip) {
 		//We are the target
-		route_table_update(op, hdr, addr, 0);
+		int ret = route_table_update(op, hdr, addr, 0);
+		if (he && ret == 0) {
+			log_info("We already replied to this duplicated RREQ, "
+			    "and this is not a better route, won't reply.");
+			return;
+		}
 		log_info("We are the target of RREQ, replying...\n");
 		struct msg *nm = calloc(1, sizeof(struct msg));
 		struct odr_hdr *xhdr = NULL;
 		nm->buf = calloc(1, sizeof(struct odr_hdr));
 		xhdr = nm->buf;
-		xhdr->flags = htons(ODR_RREP);
+		xhdr->flags = htons(ODR_RREP|(flags&ODR_FORCED));
 		xhdr->saddr = op->myip;
 		xhdr->daddr = hdr->saddr;
 		xhdr->hop_count = 0;
 		nm->len = sizeof(struct odr_hdr);
 
-		int ret = send_msg_dontqueue(op, nm);
+		ret = send_msg_dontqueue(op, nm);
 		if (!ret)
 			log_warn("Can't find route for RREP, IMPOSSIBLE\n");
 		free(nm->buf);
@@ -425,10 +438,21 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	}
 	struct route_entry *re;
 	int rea = get_route(op, hdr->daddr, &re);
-	if (rea) {
+	if (rea || (flags & ODR_FORCED)) {
 		//Not found
-		route_table_update(op, hdr, addr, 1);
-		if (rea == 1)
+		int ret = route_table_update(op, hdr, addr, 1);
+		//if ret = 1: better route, we want to reply but
+		//	      there's no route, so we broadcast, so noadv=1
+		//if ret = 0: no better route, we don't want to reply, and
+		//	      there's no need to propagate, so noadv=1
+		if (ret == 0 && he) {
+			log_info("We already replied to this duplicated RREQ, "
+			    "and this is not a better route, won't reply.");
+			return;
+		}
+		if (flags & ODR_FORCED)
+			log_info("Forced rediscovery, broadcasting...\n");
+		else if (rea == 1)
 			log_info("No route entry found, broadcasting...\n");
 		else
 			log_info("Route entry staled, broadcasting...\n");
@@ -437,9 +461,14 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 		broadcast(op, op->buf, op->msg_len, addr->sll_ifindex);
 	} else {
+		int ret = route_table_update(op, hdr, addr, 0);
+		if (he && ret == 0) {
+			log_info("We already replied to this duplicated RREQ, "
+			    "and this is not a better route, won't reply.");
+			return;
+		}
 		log_info("Route entry found, sending RREP"
 		    " on behalf of the target.\n");
-		route_table_update(op, hdr, addr, 0);
 		struct msg *nm = calloc(1, sizeof(struct msg));
 		struct odr_hdr *xhdr = NULL;
 		nm->buf = calloc(1, sizeof(struct odr_hdr));
@@ -450,7 +479,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr->flags = htons(ODR_RREP);
 		nm->len = sizeof(struct odr_hdr);
 
-		int ret = send_msg_dontqueue(op, nm);
+		ret = send_msg_dontqueue(op, nm);
 		if (!ret)
 			log_warn("Can't find route for RREP, IMPOSSIBLE\n");
 		return;
