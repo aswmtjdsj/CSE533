@@ -342,12 +342,13 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 	} else
 		log_info("Nothing to update, route table unchanged\n");
 }
-static inline int
+static inline struct host_entry *
 host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 	//Looking up the source
 	struct skip_list_head *hres = skip_list_find_le(op->known_hosts,
 	    &ip, addr_cmp);
-	if (!hres) {
+	struct host_entry *he = skip_list_entry(hres, struct host_entry, h);
+	if (!hres || he->ip != ip) {
 		struct host_entry *he = calloc(1, sizeof(struct host_entry));
 		he->ip = ip;
 		he->last_broadcast_id = ntohl(bid);
@@ -359,19 +360,13 @@ host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 		he->name = strdup(h->h_name);
 		skip_list_insert(op->known_hosts, &he->h, &he->ip,
 				 addr_cmp);
-		return 1;
+		return NULL;
 	} else {
-		struct host_entry *he = skip_list_entry(hres,
-		    struct host_entry, h);
-		if (bid <= he->last_broadcast_id) {
-			log_info("Packet broadcast id is less than the last"
-			    "broadcast id recorded (%d < %d), possibly looping"
-			    "packets. discarding...\n", bid,
-			    he->last_broadcast_id+1);
-			return 0;
-		} else {
+		if (bid <= he->last_broadcast_id)
+			return he;
+		else {
 			he->last_broadcast_id = bid;
-			return 1;
+			return NULL;
 		}
 	}
 }
@@ -382,9 +377,14 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
-	int ret = host_entry_update(op, hdr->saddr, ntohl(hdr->bid));
-	if (!ret)
+	struct host_entry *he = host_entry_update(op, hdr->saddr, ntohl(hdr->bid));
+	if (he) {
+		log_info("Packet broadcast id is less than the last"
+		    "broadcast id recorded (%d < %d), possibly looping"
+		    "packets. discarding...\n", ntohl(hdr->bid),
+		    he->last_broadcast_id+1);
 		return;
+	}
 
 	if (hdr->daddr == op->myip) {
 		//We are the target
