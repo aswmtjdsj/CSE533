@@ -287,7 +287,7 @@ void client_callback(void *ml, void * data, int rw) {
 					"mapping table (port: %u), no need to generate"
 					"random port for it\n", cli_addr.sun_path, te->port);
 		} else {
-			if(strcmp(sent_payload, "OPEN") == 0) {
+			if(strncmp(sent_payload, "OPEN", 4) == 0) {
 				// duplicate initial message
 				log_warn("Server application with sun_path \"%s\" is already in "
 						"mapping table (port: %u), no need to re-insert it "
@@ -297,7 +297,7 @@ void client_callback(void *ml, void * data, int rw) {
 		}
 		src_port = te->port;
 	} else {
-		if(strcmp(sent_payload, "OPEN") == 0) {
+		if(strncmp(sent_payload, "OPEN", 4) == 0) {
 			log_warn("Received initial message from local time server! "
 					"Gonna insert a table entry for time server\n");
 			insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
