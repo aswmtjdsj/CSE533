@@ -265,16 +265,33 @@ void client_callback(void *ml, void * data, int rw) {
 				 (struct sockaddr *) &cli_addr, &cli_len)) < 0)
 		my_err_quit("recvfrom error");
 
+	// parse
+	s_hdr = (void *)sent_msg;
+	sent_payload = (void *)(s_hdr+1);
+
 	log_debug("Message retrieved from application layer!\n");
 
 	struct co_table *te =
 	    search_table_by_sun_path(table_head, cli_addr.sun_path);
 	if (te) {
-		log_debug("application with sun_path \"%s\" is already in "
-		    "mapping table (port: %u), No need to generate"
-		    "random port\n", cli_addr.sun_path, te->port);
+		if(te->port != TIM_SERV_PORT) {
+			log_warn("Client application with sun_path \"%s\" is already in "
+					"mapping table (port: %u), No need to generate"
+					"random port\n", cli_addr.sun_path, te->port);
+		} else {
+			log_warn("Server application with sun_path \"%s\" is already in "
+					"mapping table (port: %u), No need to re-insert it "
+					"again\n", cli_addr.sun_path, te->port);
+		}
 		src_port = te->port;
 	} else {
+		if(strcmp(sent_payload, "OPEN") == 0) {
+			log_info("Received initial message from local time server! "
+					"Gonna insert a table entry for time server\n");
+			insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
+			return ;
+		}
+
 		struct co_table *cur;
 		do {
 			src_port = rand() % MAX_PORT_NUM;
@@ -294,10 +311,6 @@ void client_callback(void *ml, void * data, int rw) {
 		    timer_insert(ml, &tv, entry_timeout, pp));
 	}
 
-	s_hdr = (void *)sent_msg;
-	sent_payload = (void *)(s_hdr+1);
-	// parse application message
-	//
 	int odr_msg_len =
 	    make_odr_msg(odr_msg,
 			 make_odr_msg_hdr(&o_hdr, htons(src_port),
@@ -339,10 +352,10 @@ int main(int argc, const char **argv) {
 	// init srand for random port
 	srand(time(NULL));
 	// table: port<->sun_path
+	// init table head
 	table_head = NULL; // init
-	log_debug("Time server, info: %u, sun_path: %s\n", TIM_SERV_PORT,
-	    TIM_SERV_SUN_PATH);
-	insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
+	// log_debug("Time server, info: %u, sun_path: %s\n", TIM_SERV_PORT,
+	//    TIM_SERV_SUN_PATH);
 
 	if(gethostname(local_host_name, sizeof(local_host_name)) < 0) {
 		my_err_quit("gethostname error");
