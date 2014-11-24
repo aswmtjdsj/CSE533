@@ -282,18 +282,17 @@ void client_callback(void *ml, void * data, int rw) {
 	struct co_table *te =
 	    search_table_by_sun_path(table_head, cli_addr.sun_path);
 	if (te) {
+		if(strncmp(sent_payload, "OPEN", 4) == 0) {
+			// duplicate initial message
+			log_warn("Server application with sun_path \"%s\" is already in "
+					"mapping table (port: %u), no need to re-insert it "
+					"again\n", cli_addr.sun_path, te->port);
+			return ;
+		}
 		if(te->port != TIM_SERV_PORT) {
 			log_warn("Client application with sun_path \"%s\" is already in "
 					"mapping table (port: %u), no need to generate"
 					"random port for it\n", cli_addr.sun_path, te->port);
-		} else {
-			if(strncmp(sent_payload, "OPEN", 4) == 0) {
-				// duplicate initial message
-				log_warn("Server application with sun_path \"%s\" is already in "
-						"mapping table (port: %u), no need to re-insert it "
-						"again\n", cli_addr.sun_path, te->port);
-				return ;
-			}
 		}
 		src_port = te->port;
 	} else {
