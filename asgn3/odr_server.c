@@ -320,11 +320,20 @@ int main(int argc, const char **argv) {
 	int staleness = 0;
 	if(argc < 2) {
 		log_err("Number of parameters incorrect!\n");
-		log_warn("Usage: ./odr_server <stale> #in miliseconds\n");
+		log_warn("Usage: ./odr_server <stale> /*in seconds*/\n");
 		exit(EXIT_FAILURE);
 	} else {
 		staleness = atoi(argv[1]);
-		log_info("staleness: %d milisecond(s)\n", staleness);
+		if(staleness >= 1000) {
+			log_warn("You have selected %d as the staleness, "
+					"which is more than 1000 seconds, "
+					"I think maybe you mean %d miliseconds? "
+					"Anyway, I'll divide this staleness by 1000.\n",
+					staleness, staleness);
+			staleness /= 1000;
+		}
+		log_info("The staleness parameter for ODR server is %d second(s) (%d milisecond(s))\n", staleness, staleness * 1000);
+		staleness *= 1000;
 	}
 
 	// init srand for random port
