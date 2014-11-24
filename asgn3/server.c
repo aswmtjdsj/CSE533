@@ -66,13 +66,6 @@ int main() {
 
     log_debug("Server unix domain socket created, socket sun path: %s, socket structure size: %u\n", serv_addr_info.sun_path, (unsigned int) sock_len);
 
-	// tell local odr server to create a table entry for
-	// time server
-	log_debug("Time server needs to tell local odr server it has become online, and create a table entry for itself ...\n");
-	if(msg_send(sock_un_fd, src_ip, TIM_SERV_PORT, "OPEN", NON_REDISCOVER) < 0) {
-		my_err_quit("msg_send error");
-	}
-
     log_info("Waiting for incoming requests ...\n");
     // handle message
     for( ; ; ) {

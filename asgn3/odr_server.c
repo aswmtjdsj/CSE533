@@ -243,7 +243,6 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 			log_warn("Time server port %u is not open; time server"
 					" is not running!\n", TIM_SERV_PORT);
 			log_debug("Gonna remove time server entry from the table!\n");
-			remove_from_table_by_port(&table_head, TIM_SERV_PORT);
 		}
 
 	}
@@ -282,13 +281,6 @@ void client_callback(void *ml, void * data, int rw) {
 	struct co_table *te =
 	    search_table_by_sun_path(table_head, cli_addr.sun_path);
 	if (te) {
-		if(strncmp(sent_payload, "OPEN", 4) == 0) {
-			// duplicate initial message
-			log_warn("Server application with sun_path \"%s\" is already in "
-					"mapping table (port: %u), no need to re-insert it "
-					"again\n", cli_addr.sun_path, te->port);
-			return ;
-		}
 		if(te->port != TIM_SERV_PORT) {
 			log_warn("Client application with sun_path \"%s\" is already in "
 					"mapping table (port: %u), no need to generate"
@@ -296,12 +288,6 @@ void client_callback(void *ml, void * data, int rw) {
 		}
 		src_port = te->port;
 	} else {
-		if(strncmp(sent_payload, "OPEN", 4) == 0) {
-			log_warn("Received initial message from local time server! "
-					"Gonna insert a table entry for time server\n");
-			insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
-			return ;
-		}
 
 		struct co_table *cur;
 		do {
@@ -365,6 +351,7 @@ int main(int argc, const char **argv) {
 	// table: port<->sun_path
 	// init table head
 	table_head = NULL; // init
+	insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
 	// log_debug("Time server, info: %u, sun_path: %s\n", TIM_SERV_PORT,
 	//    TIM_SERV_SUN_PATH);
 
