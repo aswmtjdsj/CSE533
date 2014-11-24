@@ -8,7 +8,6 @@
 
 struct odr_protocol;
 struct msg {
-	uint16_t flags;
 	uint16_t len;
 	void *buf;
 	struct msg *next;
