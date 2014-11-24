@@ -465,11 +465,6 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
-		struct route_entry *re;
-		int ret = get_route(op, hdr->daddr, &re);
-		int tgt = -1;
-		if (ret == 0)
-			tgt = re->ifi_idx;
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 		struct msg *msg = calloc(1, sizeof(struct msg));
@@ -489,11 +484,6 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 	if (hdr->daddr != op->myip) {
 		//Route the packet
-		struct route_entry *re;
-		int ret = get_route(op, hdr->daddr, &re);
-		int tgt = -1;
-		if (ret == 0)
-			tgt = re->ifi_idx;
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 		struct msg *msg = calloc(1, sizeof(struct msg));
