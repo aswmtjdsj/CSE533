@@ -416,7 +416,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		int ret = route_table_update(op, hdr, addr, 0);
 		if (he && ret == 0) {
 			log_info("We already replied to this duplicated RREQ, "
-			    "and this is not a better route, won't reply.");
+			    "and this is not a better route, won't reply.\n");
 			return;
 		}
 		log_info("We are the target of RREQ, replying...\n");
@@ -449,7 +449,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		//	      there's no need to propagate, so noadv=1
 		if (ret == 0 && he) {
 			log_info("We already replied to this duplicated RREQ, "
-			    "and this is not a better route, won't reply.");
+			    "and this is not a better route, won't reply.\n");
 			return;
 		}
 		if (flags & ODR_FORCED)
@@ -466,7 +466,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		int ret = route_table_update(op, hdr, addr, 0);
 		if (he && ret == 0) {
 			log_info("We already replied to this duplicated RREQ, "
-			    "and this is not a better route, won't reply.");
+			    "and this is not a better route, won't reply.\n");
 			return;
 		}
 		log_info("Route entry found, sending RREP"
