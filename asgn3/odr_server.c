@@ -237,8 +237,16 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 	tar_len = sizeof(tar_addr);
 	// should get un fd first
 	if(sendto(sockfd, send_dgram, sent_size, 0,
-		  (struct sockaddr *) &tar_addr, tar_len) < 0)
+		  (struct sockaddr *) &tar_addr, tar_len) < 0) {
 		log_err("sendto error\n");
+		if(table_entry->port == TIM_SERV_PORT) {
+			log_warn("Time server port %u is not open; time server"
+					" is not running!\n", TIM_SERV_PORT);
+			log_debug("Gonna remove time server entry from the table!\n");
+			remove_from_table_by_port(&table_head, TIM_SERV_PORT);
+		}
+
+	}
 	else
 		log_debug("msg forwarded! data callback done!\n");
 }
@@ -276,17 +284,18 @@ void client_callback(void *ml, void * data, int rw) {
 	if (te) {
 		if(te->port != TIM_SERV_PORT) {
 			log_warn("Client application with sun_path \"%s\" is already in "
-					"mapping table (port: %u), No need to generate"
-					"random port\n", cli_addr.sun_path, te->port);
+					"mapping table (port: %u), no need to generate"
+					"random port for it\n", cli_addr.sun_path, te->port);
 		} else {
 			log_warn("Server application with sun_path \"%s\" is already in "
-					"mapping table (port: %u), No need to re-insert it "
+					"mapping table (port: %u), no need to re-insert it "
 					"again\n", cli_addr.sun_path, te->port);
+			return ;
 		}
 		src_port = te->port;
 	} else {
 		if(strcmp(sent_payload, "OPEN") == 0) {
-			log_info("Received initial message from local time server! "
+			log_warn("Received initial message from local time server! "
 					"Gonna insert a table entry for time server\n");
 			insert_table(&table_head, TIM_SERV_PORT, TIM_SERV_SUN_PATH, NULL);
 			return ;
