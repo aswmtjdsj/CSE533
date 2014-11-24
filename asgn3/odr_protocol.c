@@ -80,7 +80,7 @@ get_route(struct odr_protocol *op, uint32_t daddr, struct route_entry **re) {
 	uint64_t now = get_timestamp();
 
 	if (tre->timestamp+op->stale < now)
-		return 3;
+		return 2;
 
 	if (re)
 		*re = tre;
@@ -103,7 +103,7 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg) {
 		    inet_ntoa((struct in_addr){hdr->daddr}));
 		return 0;
 	}
-	if (rea == 3) {
+	if (rea == 2) {
 		log_info("Route to destination %s found, but staled\n",
 		    inet_ntoa((struct in_addr){hdr->daddr}));
 		//Route stale
@@ -367,7 +367,7 @@ host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 	if (!hres || he->ip != ip) {
 		struct host_entry *he = calloc(1, sizeof(struct host_entry));
 		he->ip = ip;
-		he->last_broadcast_id = ntohl(bid);
+		he->last_broadcast_id = bid;
 
 		struct in_addr tmpaddr;
 		tmpaddr.s_addr = ip;
@@ -423,13 +423,15 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		free(nm);
 		return;
 	}
-	struct skip_list_head *res =
-	    skip_list_find_le(op->route_table, &hdr->daddr, addr_cmp);
-	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
-	if (!res || re->dst_ip != hdr->daddr) {
+	struct route_entry *re;
+	int rea = get_route(op, hdr->daddr, &re);
+	if (rea) {
 		//Not found
 		route_table_update(op, hdr, addr, 1);
-		log_info("No route entry found, broadcasting...\n");
+		if (rea == 1)
+			log_info("No route entry found, broadcasting...\n");
+		else
+			log_info("Route entry staled, broadcasting...\n");
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 
@@ -444,7 +446,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr = nm->buf;
 		xhdr->daddr = hdr->saddr;
 		xhdr->saddr = hdr->daddr;
-		xhdr->hop_count = re->hop_count;
+		xhdr->hop_count = htons(re->hop_count+1);
 		xhdr->flags = htons(ODR_RREP);
 		nm->len = sizeof(struct odr_hdr);
 
@@ -457,7 +459,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	host_entry_update(op, hdr->saddr, -1);
+	host_entry_update(op, hdr->saddr, 0);
 	route_table_update(op, hdr, addr, 1);
 
 	if (hdr->daddr != op->myip) {
@@ -476,7 +478,7 @@ rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	host_entry_update(op, hdr->saddr, -1);
+	host_entry_update(op, hdr->saddr, 0);
 	route_table_update(op, hdr, addr, 1);
 
 	if (hdr->daddr != op->myip) {
@@ -499,7 +501,7 @@ static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr, addr, 1);
-	host_entry_update(op, hdr->saddr, -1);
+	host_entry_update(op, hdr->saddr, 0);
 }
 
 static inline void
@@ -566,7 +568,7 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data, int stale) {
 	op->route_table = calloc(1, sizeof(struct skip_list_head));
 	op->known_hosts = calloc(1, sizeof(struct skip_list_head));
 	op->pending_msgs = NULL;
-	op->bid = 0;
+	op->bid = 1;
 	op->myip = 0;
 	skip_list_init_head(op->route_table);
 	skip_list_init_head(op->known_hosts);
