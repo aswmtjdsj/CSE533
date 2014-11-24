@@ -394,7 +394,7 @@ host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	uint16_t flags = hdr->flags;
+	uint16_t flags = ntohs(hdr->flags);
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
