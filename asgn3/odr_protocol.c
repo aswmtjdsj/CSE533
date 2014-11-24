@@ -142,14 +142,15 @@ dump_odr_hdr(struct odr_hdr *hdr) {
 		tmpfp += sprintf(tmpfp, "RREQ ");
 	if (flags & ODR_RADV)
 		tmpfp += sprintf(tmpfp, "RADV ");
+	if (flags & ODR_FORCED)
+		tmpfp += sprintf(tmpfp, "FORCED ");
 	log_debug("\tFLAGS: %s\n", tmpf);
 	log_debug("\tSource IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->saddr}));
 	log_debug("\tTarget IP: %s\n",
 	    inet_ntoa((struct in_addr){hdr->daddr}));
 	log_debug("\tHop count: %d\n", ntohs(hdr->hop_count));
-	log_debug("\tBroadcast ID (only makes sense for RREQ): %d\n",
-	    ntohl(hdr->bid));
+	log_debug("\tBroadcast ID: %d\n", ntohl(hdr->bid));
 }
 static inline
 int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
@@ -209,7 +210,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg, int flags) {
 	xhdr->daddr = hdr->daddr;
 	xhdr->saddr = op->myip;
 	xhdr->hop_count = 0;
-	xhdr->flags = htons(ODR_RREQ);
+	xhdr->flags = htons(ODR_RREQ|(flags?ODR_FORCED:0));
 	xhdr->bid = htonl(op->bid++);
 	xhdr->payload_len = 0;
 
@@ -325,7 +326,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		xhdr->flags = htons(ODR_RADV|flags);
 		xhdr->hop_count = htons(hop_count+1);
 		xhdr->payload_len = 0;
-		xhdr->bid = htonl(op->bid++);
+		xhdr->bid = hdr->bid;
 		xhdr->daddr = 0;
 		xhdr->saddr = daddr;
 
@@ -427,6 +428,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr->saddr = op->myip;
 		xhdr->daddr = hdr->saddr;
 		xhdr->hop_count = 0;
+		xhdr->bid = htonl(op->bid++);
 		nm->len = sizeof(struct odr_hdr);
 
 		ret = send_msg_dontqueue(op, nm);
@@ -477,6 +479,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		xhdr->saddr = hdr->daddr;
 		xhdr->hop_count = htons(re->hop_count+1);
 		xhdr->flags = htons(ODR_RREP);
+		xhdr->bid = htonl(op->bid++);
 		nm->len = sizeof(struct odr_hdr);
 
 		ret = send_msg_dontqueue(op, nm);
@@ -488,7 +491,12 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	host_entry_update(op, hdr->saddr, 0);
+	struct host_entry *he = host_entry_update(op, hdr->saddr,
+	    ntohl(hdr->bid));
+	if (he) {
+		log_debug("duplicated RREP, removing forced bit.\n");
+		hdr->flags = htons(ntohs(hdr->flags) & ~ODR_FORCED);
+	}
 	route_table_update(op, hdr, addr, 1);
 
 	if (hdr->daddr != op->myip) {
@@ -529,8 +537,19 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr, 1);
-	host_entry_update(op, hdr->saddr, 0);
+	uint16_t flags = ntohs(hdr->flags);
+	if (!(flags&ODR_RREQ)) {
+		log_debug("malformed radv (no rreq flag)\n");
+		return;
+	}
+
+	struct host_entry *he =
+	    host_entry_update(op, hdr->saddr, ntohl(hdr->bid));
+	if (he) {
+		log_debug("duplicated radv (bid already seen in a rreq)\n");
+		hdr->flags = htons(flags&~ODR_FORCED);
+	}
+	route_table_update(op, hdr, addr, 0);
 }
 
 static inline void
