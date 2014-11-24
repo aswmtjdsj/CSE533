@@ -68,6 +68,25 @@ get_timestamp(void) {
 	return t;
 }
 static inline int
+get_route(struct odr_protocol *op, uint32_t daddr, struct route_entry **re) {
+	struct skip_list_head *res = skip_list_find_le(op->route_table,
+	    &daddr, addr_cmp);
+	struct route_entry *tre;
+	*re = NULL;
+	tre = skip_list_entry(res, struct route_entry, h);
+	if (!res || tre->dst_ip != daddr)
+		return 1;
+
+	uint64_t now = get_timestamp();
+
+	if (tre->timestamp+op->stale < now)
+		return 3;
+
+	if (re)
+		*re = tre;
+	return 0;
+}
+static inline int
 send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 		   int direct) {
 	struct odr_hdr *hdr = msg->buf;
@@ -77,25 +96,21 @@ send_msg_dontqueue(struct odr_protocol *op, const struct msg *msg,
 		    op->cbdata);
 		return 1;
 	}
-	struct skip_list_head *res = skip_list_find_le(op->route_table,
-	    &hdr->daddr, addr_cmp);
-	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
-	if (!res || re->dst_ip != hdr->daddr) {
+	struct route_entry *re;
+	int rea = get_route(op, hdr->daddr, &re);
+	if (rea == 1) {
 		//No route to host
 		log_info("Route to destination %s not found\n",
 		    inet_ntoa((struct in_addr){hdr->daddr}));
 		return 0;
 	}
-
-	uint64_t now = get_timestamp();
 	if (msg->flags && !direct) {
 		log_info("Route to destination %s found, but flag is set\n",
 		    inet_ntoa((struct in_addr){hdr->daddr}));
 		//Force rediscovery
 		return 0;
 	}
-
-	if (re->timestamp+op->stale < now) {
+	if (rea == 3) {
 		log_info("Route to destination %s found, but staled\n",
 		    inet_ntoa((struct in_addr){hdr->daddr}));
 		//Route stale
@@ -143,8 +158,12 @@ dump_odr_hdr(struct odr_hdr *hdr) {
 	log_debug("\tBroadcast ID (only makes sense for RREQ): %d\n",
 	    ntohl(hdr->bid));
 }
+struct bexculde {
+	int id1, id2;
+};
 static inline
-int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
+int broadcast(struct odr_protocol *op, void *buf, size_t len,
+	      struct bexculde ex) {
 	int i, c = 0;
 	struct sockaddr_ll lladdr;
 	memset(&lladdr, 0, sizeof(lladdr));
@@ -154,7 +173,7 @@ int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 		//Broadcast to all interfaces
 		if (!(op->ifi_table[i].flags & IFF_UP))
 			continue;
-		if (i == exclude)
+		if (i == ex.id1 || i == ex.id2)
 			continue;
 		log_info("Send packet through %s (id: %d, ip: %s)\n",
 		    op->ifi_table[i].name, i,
@@ -197,7 +216,8 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	xhdr->bid = htonl(op->bid++);
 	xhdr->payload_len = 0;
 
-	broadcast(op, buf, sizeof(struct odr_hdr), -1);
+	broadcast(op, buf, sizeof(struct odr_hdr),
+		  (struct bexculde){-1, -1});
 	free(buf);
 	return 0;
 }
@@ -222,7 +242,7 @@ int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
 //daddr and hop_count is in network order
 static inline void
 route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
-		   struct sockaddr_ll *addr) {
+		   struct sockaddr_ll *addr, int exclude, int exall) {
 	uint32_t daddr = hdr->saddr;
 	uint32_t hop_count = ntohs(hdr->hop_count);
 	uint16_t flags = ntohs(hdr->flags);
@@ -295,11 +315,16 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 			    sname, mac_tostring(re->route_mac, re->halen),
 			    re->hop_count);
 			re->timestamp = get_timestamp();
-		} else
-			send_radv = 0;
+		} else {
+			log_info("Nothing to update, route table unchanged\n");
+			return;
+		}
 	}
 
-	if (send_radv) {
+	if (exall)
+		log_info("Not sending radv because we are going to broadcast"
+		    " the RREQ to all neighbour anyway\n");
+	else {
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
 		xhdr->flags = htons(ODR_RADV|flags);
@@ -310,9 +335,12 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		xhdr->saddr = daddr;
 
 		log_info("Route updated, now we are advertising the new route"
-		    " to our neighbours\n");
+		    " to our neighbours, exclude where it came in (%d), and "
+		    "where it is going to be routed (%d)\n", addr->sll_ifindex,
+		    exclude);
 
-		broadcast(op, buf, sizeof(struct odr_hdr), addr->sll_ifindex);
+		broadcast(op, buf, sizeof(struct odr_hdr),
+		    (struct bexculde){addr->sll_ifindex, exclude});
 		free(buf);
 
 		//Then check op->pending_msgs to send out all
@@ -339,8 +367,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 				tmp = tmp->next;
 			}
 		}
-	} else
-		log_info("Nothing to update, route table unchanged\n");
+	}
 }
 static inline struct host_entry *
 host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
@@ -373,7 +400,6 @@ host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr);
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
@@ -388,6 +414,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 
 	if (hdr->daddr == op->myip) {
 		//We are the target
+		route_table_update(op, hdr, addr, -1, 0);
 		log_info("We are the target of RREQ, replying...\n");
 		struct msg *nm = calloc(1, sizeof(struct msg));
 		struct odr_hdr *xhdr = NULL;
@@ -411,14 +438,17 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
 	if (!res || re->dst_ip != hdr->daddr) {
 		//Not found
+		route_table_update(op, hdr, addr, -1, 1);
 		log_info("No route entry found, broadcasting...\n");
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 
-		broadcast(op, op->buf, op->msg_len, addr->sll_ifindex);
+		broadcast(op, op->buf, op->msg_len,
+		    (struct bexculde){addr->sll_ifindex, -1});
 	} else {
 		log_info("Route entry found, sending RREP"
 		    " on behalf of the target.\n");
+		route_table_update(op, hdr, addr, -1, 0);
 		struct msg *nm = calloc(1, sizeof(struct msg));
 		struct odr_hdr *xhdr = NULL;
 		nm->buf = calloc(1, sizeof(struct odr_hdr));
@@ -438,31 +468,16 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr);
 	host_entry_update(op, hdr->saddr, -1);
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
-		int tmp = ntohs(hdr->hop_count);
-		hdr->hop_count = htons(tmp+1);
-		struct msg *msg = calloc(1, sizeof(struct msg));
-		msg->len = op->msg_len;
-		msg->flags = 0;
-		msg->buf = malloc(msg->len);
-		memcpy(msg->buf, op->buf, msg->len);
-		//Send, possibly queueing it
-		send_msg(op, msg);
-	}
-}
-
-static inline void
-data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
-	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr);
-	host_entry_update(op, hdr->saddr, -1);
-
-	if (hdr->daddr != op->myip) {
-		//Route the packet
+		struct route_entry *re;
+		int ret = get_route(op, hdr->daddr, &re);
+		int tgt = -1;
+		if (ret == 0)
+			tgt = re->ifi_idx;
+		route_table_update(op, hdr, addr, tgt, 0);
 		int tmp = ntohs(hdr->hop_count);
 		hdr->hop_count = htons(tmp+1);
 		struct msg *msg = calloc(1, sizeof(struct msg));
@@ -473,15 +488,43 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		//Send, possibly queueing it
 		send_msg(op, msg);
 	} else
+		route_table_update(op, hdr, addr, -1, 0);
+}
+
+static inline void
+data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
+	struct odr_hdr *hdr = op->buf;
+	host_entry_update(op, hdr->saddr, -1);
+
+	if (hdr->daddr != op->myip) {
+		//Route the packet
+		struct route_entry *re;
+		int ret = get_route(op, hdr->daddr, &re);
+		int tgt = -1;
+		if (ret == 0)
+			tgt = re->ifi_idx;
+		route_table_update(op, hdr, addr, tgt, 0);
+		int tmp = ntohs(hdr->hop_count);
+		hdr->hop_count = htons(tmp+1);
+		struct msg *msg = calloc(1, sizeof(struct msg));
+		msg->len = op->msg_len;
+		msg->flags = 0;
+		msg->buf = malloc(msg->len);
+		memcpy(msg->buf, op->buf, msg->len);
+		//Send, possibly queueing it
+		send_msg(op, msg);
+	} else {
 		//Deliver the packet
+		route_table_update(op, hdr, addr, -1, 0);
 		op->cb((void *)(hdr+1), ntohs(hdr->payload_len), hdr->saddr,
 		       op->cbdata);
+	}
 }
 
 static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr);
+	route_table_update(op, hdr, addr, -1, 0);
 	host_entry_update(op, hdr->saddr, -1);
 }
 
