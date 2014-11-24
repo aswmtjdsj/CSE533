@@ -87,7 +87,7 @@ insert_table(struct co_table ** pt, uint16_t port, char * sun_path,
 	struct co_table * cur = *pt;
 	while(cur != NULL) {
 		if(strcmp(cur->sun_path, sun_path) == 0) {
-			log_warn("Table entry has already existed, port: %d, "
+			log_warn("Table entry has already existed, port: %u, "
 			    "sun_path: %s.\n", port, sun_path);
 			log_warn("Seems due to \'too short the timeout of "
 			    "sending request is\'?\n");
@@ -270,7 +270,7 @@ void client_callback(void *ml, void * data, int rw) {
 	    search_table_by_sun_path(table_head, cli_addr.sun_path);
 	if (te) {
 		log_debug("application with sun_path \"%s\" is already in "
-		    "mapping table (port: %d), No need to generate"
+		    "mapping table (port: %u), No need to generate"
 		    "random port\n", cli_addr.sun_path, te->port);
 		src_port = te->port;
 	} else {
