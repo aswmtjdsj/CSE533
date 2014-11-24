@@ -639,16 +639,16 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data, int stale) {
 			log_warn("Duplicated interface, shouldn't use"
 			    " doalias\n");
 		if (strcmp(tmp->ifi_name, "eth0") == 0) {
-			log_info("Ignoring eth0 (but recording the ip)\n");
+			log_debug("Ignoring eth0 (but recording the ip)\n");
 			op->myip = s->sin_addr.s_addr;
 			continue;
 		}
 		if (tmp->ifi_flags & IFF_LOOPBACK) {
-			log_info("Ignoring loopback interface\n");
+			log_debug("Ignoring loopback interface\n");
 			continue;
 		}
 		if (!(tmp->ifi_flags & IFF_UP)) {
-			log_info("Interface %s not up\n", tmp->ifi_name);
+			log_debug("Interface %s not up\n", tmp->ifi_name);
 			continue;
 		}
 		log_info("Valid interface %s, %d\n", tmp->ifi_name, tmp->ifi_index);
