@@ -242,7 +242,6 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 		if(table_entry->port == TIM_SERV_PORT) {
 			log_warn("Time server port %u is not open; time server"
 					" is not running!\n", TIM_SERV_PORT);
-			log_debug("Gonna remove time server entry from the table!\n");
 		}
 
 	}
