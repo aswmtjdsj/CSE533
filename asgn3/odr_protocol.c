@@ -237,12 +237,16 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 			    " route table\n");
 		else if (flags & ODR_RREQ)
 			log_info("\tRREQ (RREP already sent by another node)\n");
+		else if (flags & ODR_RREP)
+			log_info("\tRREP (already forwarded by another node)\n");
 		else
 			log_info("\tRoute advertisement\n");
 	} else if (flags & ODR_DATA)
 		log_info("Data packet\n");
 	else if (flags & ODR_RREQ)
 		log_info("RREQ\n");
+	else if (flags & ODR_RREP)
+		log_info("RREP\n");
 
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
