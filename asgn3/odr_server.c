@@ -287,10 +287,13 @@ void client_callback(void *ml, void * data, int rw) {
 					"mapping table (port: %u), no need to generate"
 					"random port for it\n", cli_addr.sun_path, te->port);
 		} else {
-			log_warn("Server application with sun_path \"%s\" is already in "
-					"mapping table (port: %u), no need to re-insert it "
-					"again\n", cli_addr.sun_path, te->port);
-			return ;
+			if(strcmp(sent_payload, "OPEN") == 0) {
+				// duplicate initial message
+				log_warn("Server application with sun_path \"%s\" is already in "
+						"mapping table (port: %u), no need to re-insert it "
+						"again\n", cli_addr.sun_path, te->port);
+				return ;
+			}
 		}
 		src_port = te->port;
 	} else {
