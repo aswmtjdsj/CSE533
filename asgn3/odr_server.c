@@ -110,8 +110,8 @@ static inline struct co_table *
 search_table_by_port(struct co_table * pt, uint16_t port) {
 	while(pt != NULL) {
 		if(port == pt->port) {
-			log_debug("found! %u: %s, %16x\n", pt->port,
-			    pt->sun_path, pt->timer);
+			log_debug("Table entry found! %u: %s\n", pt->port,
+			    pt->sun_path);
 			return pt;
 		}
 		pt = pt->next;
@@ -153,7 +153,7 @@ remove_from_table_by_port(struct co_table ** pt, uint16_t port) {
 		head = head->next;
 	}
 
-	log_err("Entry gonna be removed, with port#%u not found! Maybe "
+	log_err("Entry to be removed with port#%u not found! Maybe "
 	    "something wrong!\n", port);
 }
 
@@ -259,6 +259,7 @@ void client_callback(void *ml, void * data, int rw) {
 	struct odr_msg_hdr o_hdr;
 	uint16_t src_port;
 
+	log_debug("ODR server gonna retrieve message from application layer!\n");
 	// recv the time client request
 	if((recv_size = recvfrom(sockfd, sent_msg, (size_t) DGRAM_MAX_LEN, 0,
 				 (struct sockaddr *) &cli_addr, &cli_len)) < 0)
@@ -304,7 +305,7 @@ void client_callback(void *ml, void * data, int rw) {
 					 s_hdr->msg_len),
 			 sent_payload);
 
-	log_debug("going to send message via odr!\n");
+	log_debug("going to send message via ODR!\n");
 
 	// send msg via odr
 	send_msg_api(op, s_hdr->dst_ip, odr_msg, odr_msg_len, s_hdr->flag);
@@ -319,12 +320,11 @@ int main(int argc, const char **argv) {
 	int staleness = 0;
 	if(argc < 2) {
 		log_err("Number of parameters incorrect!\n");
-		log_warn("Usage: ./odr_server <stale> #in seconds\n");
+		log_warn("Usage: ./odr_server <stale> #in miliseconds\n");
 		exit(EXIT_FAILURE);
 	} else {
 		staleness = atoi(argv[1]);
-		log_info("staleness: %d second(s)\n", staleness);
-		staleness *= 1000;
+		log_info("staleness: %d milisecond(s)\n", staleness);
 	}
 
 	// init srand for random port
@@ -346,8 +346,9 @@ int main(int argc, const char **argv) {
 	path_len = strlen(ODR_SUN_PATH);
 
 	// create unix domain socket
-	if((sock_un_fd = socket(AF_LOCAL, SOCK_DGRAM, 0)) < 0)
+	if((sock_un_fd = socket(AF_LOCAL, SOCK_DGRAM, 0)) < 0) {
 		my_err_quit("socket error");
+	}
 
 	// init odr addr
 	memset(&odr_addr, 0, sizeof(odr_addr));
@@ -362,8 +363,9 @@ int main(int argc, const char **argv) {
 		my_err_quit("bind error");
 	}
 
-	if (chmod(ODR_SUN_PATH, 0777) < 0)
+	if (chmod(ODR_SUN_PATH, 0777) < 0) {
 		log_err("chmod error %s", strerror(errno));
+	}
 
 	log_debug("ODR Process unix socket created\n");
 
