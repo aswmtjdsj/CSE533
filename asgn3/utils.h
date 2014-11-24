@@ -14,7 +14,7 @@
 
 #define CASSERT(expr, str) typedef struct {int: -!!(expr); } assert_failed_##str
 
-#define IFI_NAME	16	/* same as IFNAMSIZ in <net/if.h> */
+#define IFI_NAME	IFNAMSIZ	/* same as IFNAMSIZ in <net/if.h> */
 #define IFI_HADDR	8	/* allow for 64-bit EUI-64 in future */
 #define IFI_ALIAS	1	/* ifi_addr is an alias */
 
@@ -87,5 +87,5 @@ const char *sa_ntop(struct sockaddr *, char **, size_t *);
 
 void my_err_quit(const char * /* error info */);
 #endif
-void free_ifi_info(struct ifi_info *ifihead, int deep);
+void free_ifi_info(struct ifi_info *ifihead);
 struct ifi_info * get_ifi_info(int family, int doaliases);

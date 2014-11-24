@@ -6,6 +6,15 @@
 #include "skiplist.h"
 #include "utils.h"
 #include "log.h"
+struct ifinfo {
+	int halen;
+	uint8_t hwaddr[8];
+	char name[IFNAMSIZ];
+	uint32_t ip;
+	uint16_t flags;
+	uint16_t mtu;
+	int index;
+};
 struct odr_protocol {
 	int fd;
 	int max_idx;
@@ -19,7 +28,7 @@ struct odr_protocol {
 	uint64_t stale;
 	struct skip_list_head *route_table;
 	struct skip_list_head *known_hosts;
-	struct ifi_info *ifi_table;
+	struct ifinfo *ifi_table;
 	//messages held back because there's no route
 	struct msg *pending_msgs;
 };
@@ -136,39 +145,40 @@ static inline
 int broadcast(struct odr_protocol *op, void *buf, size_t len, int exclude) {
 	int i, c = 0;
 	struct sockaddr_ll lladdr;
-	char *tmp = NULL;
-	size_t iplen = 0;
+	memset(&lladdr, 0, sizeof(lladdr));
 	lladdr.sll_protocol = htons(ODR_MAGIC);
 	lladdr.sll_family = AF_PACKET;
 	for(i=0; i<=op->max_idx; i++) {
 		//Broadcast to all interfaces
-		if (!(op->ifi_table[i].ifi_flags & IFF_UP))
+		if (!(op->ifi_table[i].flags & IFF_UP))
 			continue;
 		if (i == exclude)
 			continue;
 		log_info("Send packet through %s (id: %d, ip: %s)\n",
-		    op->ifi_table[i].ifi_name, i,
-		    sa_ntop(op->ifi_table[i].ifi_addr, &tmp, &iplen));
+		    op->ifi_table[i].name, i,
+		    inet_ntoa((struct in_addr){op->ifi_table[i].ip}));
 		memset(lladdr.sll_addr, 255, IFHWADDRLEN);
 		lladdr.sll_ifindex = i;
-		lladdr.sll_halen = op->ifi_table[i].ifi_halen;
+		lladdr.sll_halen = op->ifi_table[i].halen;
 		lladdr.sll_hatype = lladdr.sll_pkttype = 0;
 		int ret = sendto(op->fd, buf, len, 0,
 		    (struct sockaddr *)&lladdr, sizeof(lladdr));
 		if (ret < 0)
 			log_warn("Failed to send packet via %s: %s\n",
-			    op->ifi_table[i].ifi_name, strerror(errno));
+			    op->ifi_table[i].name, strerror(errno));
 		else
 			c++;
 	}
-	free(tmp);
 	return c;
 }
 static inline
 int send_msg(struct odr_protocol *op, struct msg *msg) {
 	int ret = send_msg_dontqueue(op, msg, 0);
-	if (ret)
+	if (ret) {
+		free(msg->buf);
+		free(msg);
 		return ret;
+	}
 
 	//Send failed, add to queue
 	msg->next = op->pending_msgs;
@@ -186,6 +196,7 @@ int send_msg(struct odr_protocol *op, struct msg *msg) {
 	xhdr->payload_len = 0;
 
 	broadcast(op, buf, sizeof(struct odr_hdr), -1);
+	free(buf);
 	return 0;
 }
 int send_msg_api(struct odr_protocol *op, uint32_t dst_ip,
@@ -271,6 +282,7 @@ route_table_update(struct odr_protocol *op, uint32_t daddr,
 		    " to our neighbours\n");
 
 		broadcast(op, buf, sizeof(struct odr_hdr), addr->sll_ifindex);
+		free(buf);
 
 		//Then check op->pending_msgs to send out all
 		//message we can send
@@ -321,7 +333,7 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 			log_info("Packet broadcast id is less than the last"
 			    "broadcast id recorded (%d < %d), possibly looping"
 			    "packets. discarding...\n", ntohl(hdr->bid),
-			    he->last_broadcast_id);
+			    he->last_broadcast_id+1);
 			return;
 		} else
 			he->last_broadcast_id = ntohl(hdr->bid);
@@ -444,9 +456,7 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	}
 
 	int idx = addr.sll_ifindex;
-	int mtu = op->ifi_table[idx].ifi_mtu;
-	char *tmp = NULL;
-	size_t iplen = 0;
+	int mtu = op->ifi_table[idx].mtu;
 	if (ret > mtu && mtu)
 		log_warn("Packet larger than mtu (%d>%d)\n",
 		    ret, mtu);
@@ -455,9 +465,8 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	    (struct sockaddr *)&addr, &len);
 	op->msg_len = ret;
 	log_info("Packet coming in from %s(id:%d, ip:%s)\n",
-	    op->ifi_table[idx].ifi_name, idx,
-	    sa_ntop(op->ifi_table[idx].ifi_addr, &tmp, &iplen));
-	free(tmp);
+	    op->ifi_table[idx].name, idx,
+	    inet_ntoa((struct in_addr){op->ifi_table[idx].ip}));
 
 	struct odr_hdr *hdr = op->buf;
 	dump_odr_hdr(hdr);
@@ -471,8 +480,7 @@ static void odr_read_cb(void *ml, void *data, int rw){
 	else if (flags & ODR_RADV)
 		radv_handler(op, &addr);
 }
-void *odr_protocol_init(void *ml, data_cb cb, void *data,
-			int stale, struct ifi_info *head) {
+void *odr_protocol_init(void *ml, data_cb cb, void *data, int stale) {
 	int sockfd = socket(AF_PACKET, SOCK_DGRAM, htons(ODR_MAGIC));
 	if (sockfd < 0) {
 		log_err("Failed to create packet socket\n");
@@ -490,11 +498,13 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 	op->known_hosts = calloc(1, sizeof(struct skip_list_head));
 	op->pending_msgs = NULL;
 	op->bid = 0;
+	op->myip = 0;
 	skip_list_init_head(op->route_table);
 	skip_list_init_head(op->known_hosts);
 
-	struct ifi_info *tmp = head;
+	struct ifi_info *head = get_ifi_info(AF_INET, 0), *tmp;
 	int max_idx = 0;
+	tmp = head;
 	while(tmp) {
 		if (tmp->ifi_index > max_idx)
 			max_idx = tmp->ifi_index;
@@ -503,13 +513,14 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 	op->max_idx = 0;
 	op->ifi_table = calloc(max_idx+1, sizeof(struct ifi_info));
 	for (tmp = head; tmp; tmp = tmp->ifi_next) {
-		if (op->ifi_table[tmp->ifi_index].ifi_name[0])
+		struct ifinfo *ife = &op->ifi_table[tmp->ifi_index];
+		struct sockaddr_in *s = (struct sockaddr_in *)
+		    tmp->ifi_addr;
+		if (ife->name[0])
 			log_warn("Duplicated interface, shouldn't use"
 			    " doalias\n");
 		if (strcmp(tmp->ifi_name, "eth0") == 0) {
 			log_info("Ignoring eth0 (but recording the ip)\n");
-			struct sockaddr_in *s = (struct sockaddr_in *)
-			    tmp->ifi_addr;
 			op->myip = s->sin_addr.s_addr;
 			continue;
 		}
@@ -522,10 +533,15 @@ void *odr_protocol_init(void *ml, data_cb cb, void *data,
 			continue;
 		}
 		log_info("Valid interface %s, %d\n", tmp->ifi_name, tmp->ifi_index);
-		memcpy(op->ifi_table+tmp->ifi_index, tmp,
-		       sizeof(struct ifi_info));
+		ife->ip = s->sin_addr.s_addr;
+		ife->flags = tmp->ifi_flags;
+		ife->halen = IFHWADDRLEN;
+		ife->mtu = tmp->ifi_mtu;
+		ife->index = tmp->ifi_index;
+		memcpy(ife->hwaddr, tmp->ifi_hwaddr, sizeof(ife->hwaddr));
 		if (tmp->ifi_index > op->max_idx)
 			op->max_idx = tmp->ifi_index;
 	}
+	free_ifi_info(head);
 	return op;
 }

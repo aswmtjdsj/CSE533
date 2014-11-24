@@ -374,7 +374,7 @@ int main(int argc, const char **argv) {
 	b_o->ml = ml;
 	// init odr
 	struct odr_protocol * op = odr_protocol_init(ml, data_callback, b_o,
-	    staleness, get_ifi_info(AF_INET, 0));
+						     staleness);
 
 	// set application response
 	void * fh = fd_insert(ml, sock_un_fd, FD_READ, client_callback, NULL);

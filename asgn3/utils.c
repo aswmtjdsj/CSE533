@@ -187,21 +187,19 @@ get_ifi_info(int family, int doaliases) {
 }
 
 void
-free_ifi_info(struct ifi_info *ifihead, int deep)
+free_ifi_info(struct ifi_info *ifihead)
 {
 	struct ifi_info	*ifi, *ifinext;
 
 	for (ifi = ifihead; ifi != NULL; ifi = ifinext) {
-		if (deep) {
-			if (ifi->ifi_addr != NULL)
-				free(ifi->ifi_addr);
-			if (ifi->ifi_brdaddr != NULL)
-				free(ifi->ifi_brdaddr);
-			if (ifi->ifi_dstaddr != NULL)
-				free(ifi->ifi_dstaddr);
-			if (ifi->ifi_ntmaddr != NULL)
-				free(ifi->ifi_ntmaddr);
-		}
+		if (ifi->ifi_addr != NULL)
+			free(ifi->ifi_addr);
+		if (ifi->ifi_brdaddr != NULL)
+			free(ifi->ifi_brdaddr);
+		if (ifi->ifi_dstaddr != NULL)
+			free(ifi->ifi_dstaddr);
+		if (ifi->ifi_ntmaddr != NULL)
+			free(ifi->ifi_ntmaddr);
 
 		ifinext = ifi->ifi_next;
 		free(ifi);
@@ -247,7 +245,7 @@ void dump_ifi_info(int family, int doaliases) {
 			log_info("\tdestination addr: %s\n",
 			    sa_ntop(sa, &tmp, &len));
 	}
-	free_ifi_info(ifihead, 1);
+	free_ifi_info(ifihead);
 }
 
 void my_err_quit(const char * prompt) {
