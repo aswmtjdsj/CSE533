@@ -33,7 +33,7 @@ void make_send_msg(uint8_t * send_msg, struct send_msg_hdr * s_hdr,
 }
 
 struct recv_msg_hdr *
-eake_recv_hdr(struct recv_msg_hdr * hdr, uint32_t ip,
+make_recv_hdr(struct recv_msg_hdr * hdr, uint32_t ip,
 	      uint16_t port, int len) {
 	hdr->src_ip = ip;
 	hdr->src_port = htons(port);
