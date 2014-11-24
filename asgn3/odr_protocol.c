@@ -242,11 +242,11 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		else
 			log_info("\tRoute advertisement\n");
 	} else if (flags & ODR_DATA)
-		log_info("Data packet\n");
+		log_info("\tData packet\n");
 	else if (flags & ODR_RREQ)
-		log_info("RREQ\n");
+		log_info("\tRREQ\n");
 	else if (flags & ODR_RREP)
-		log_info("RREP\n");
+		log_info("\tRREP\n");
 
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
