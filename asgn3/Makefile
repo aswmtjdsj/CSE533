@@ -5,7 +5,7 @@ time_server_OBJS = server.o utils.o msg_api.o
 odr_server_OBJS = odr_server.o mainloop.o utils.o odr_protocol.o msg_api.o
 OBJS = $(time_client_OBJS) $(time_server_OBJS) $(odr_server_OBJS)
 BINARIES = odr_server_xiangyu time_client_xiangyu time_server_xiangyu
-CFLAGS = -g -DLOG_LEVEL=10 -Wall -Wno-unused-function
+CFLAGS = -g -Wall -Wno-unused-function
 
 all: $(OBJS) $(BINARIES)
 
