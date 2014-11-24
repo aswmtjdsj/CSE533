@@ -289,7 +289,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 	if (send_radv) {
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
-		xhdr->flags = hdr->flags;
+		xhdr->flags = htons(ODR_RADV|flags);
 		xhdr->hop_count = htons(hop_count+1);
 		xhdr->payload_len = 0;
 		xhdr->bid = htonl(op->bid++);
