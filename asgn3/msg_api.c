@@ -33,12 +33,8 @@ void make_send_msg(uint8_t * send_msg, struct send_msg_hdr * s_hdr,
 }
 
 struct recv_msg_hdr *
-make_recv_hdr(struct recv_msg_hdr * hdr, uint32_t ip,
+eake_recv_hdr(struct recv_msg_hdr * hdr, uint32_t ip,
 	      uint16_t port, int len) {
-	if(hdr == NULL) {
-		hdr = malloc(sizeof(struct recv_msg_hdr));
-	}
-
 	hdr->src_ip = ip;
 	hdr->src_port = htons(port);
 	hdr->msg_len = htons(len);

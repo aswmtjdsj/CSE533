@@ -355,6 +355,8 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 		int ret = send_msg_dontqueue(op, nm, 0);
 		if (!ret)
 			log_warn("Can't find route for RREP, IMPOSSIBLE\n");
+		free(nm->buf);
+		free(nm);
 		return;
 	}
 	struct skip_list_head *res =

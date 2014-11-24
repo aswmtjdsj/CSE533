@@ -182,7 +182,7 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 	uint8_t send_dgram[DGRAM_MAX_LEN];
 	struct sockaddr_un tar_addr;
 	struct odr_msg_hdr *o_hdr = (void *)buf;
-	struct recv_msg_hdr * r_hdr = NULL;
+	struct recv_msg_hdr r_hdr;
 	int sent_size = 0;
 	socklen_t tar_len = 0;
 	struct co_table * table_entry = NULL;
@@ -194,7 +194,7 @@ void data_callback(void * buf, uint16_t len, uint32_t src_ip, void * data) {
 	// parse odr_msg
 	// make msg to push back to application layer
 	make_recv_msg(send_dgram,
-			make_recv_hdr(r_hdr, src_ip,
+			make_recv_hdr(&r_hdr, src_ip,
 				ntohs(o_hdr->src_port), ntohs(o_hdr->msg_len)),
 			o_hdr+1, ntohs(o_hdr->msg_len), &sent_size);
 
