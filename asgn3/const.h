@@ -24,9 +24,9 @@
 
 #define SEND_MAX_TIMEOUT 5
 
-#define ODR_SUN_PATH "/tmp/ODR_path_xiangyu"
-#define TIM_SERV_SUN_PATH "/tmp/time_path_xiangyu"
-#define CLI_SUN_PATH "/tmp/client_xiangyu_XXXXXX"
+#define ODR_SUN_PATH "/tmp/ODR_path_" ID
+#define TIM_SERV_SUN_PATH "/tmp/time_path_" ID
+#define CLI_SUN_PATH "/tmp/client_" ID "_XXXXXX"
 #define TIM_SERV_PORT 19326
 #define SUN_PATH_MAX_LEN 100
 

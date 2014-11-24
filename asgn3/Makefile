@@ -6,7 +6,7 @@ odr_server_OBJS = odr_server.o mainloop.o utils.o odr_protocol.o msg_api.o
 OBJS = $(time_client_OBJS) $(time_server_OBJS) $(odr_server_OBJS)
 ID = syuxuan
 BINARIES = odr_server_$(ID) time_client_$(ID) time_server_$(ID)
-CFLAGS = -g -Wall -Wno-unused-function
+CFLAGS = -g -Wall -Wno-unused-function -DID=\"$(ID)\"
 
 all: $(OBJS) $(BINARIES)
 
