@@ -1,4 +1,5 @@
 #include <time.h>
+#include <netdb.h>
 
 #include "odr_hdr.h"
 #include "mainloop.h"
@@ -35,6 +36,7 @@ struct odr_protocol {
 struct host_entry {
 	struct skip_list_head h;
 	uint32_t ip;
+	char *name;
 	uint64_t last_broadcast_id;
 };
 struct route_entry {
@@ -251,10 +253,17 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 	struct skip_list_head *res = skip_list_find_le(op->route_table,
 	    &daddr, addr_cmp);
 	struct route_entry *re = skip_list_entry(res, struct route_entry, h);
+	struct skip_list_head *hres = skip_list_find_le(op->known_hosts,
+	    &daddr, addr_cmp);
+	struct host_entry *he = skip_list_entry(hres, struct host_entry, h);
+	const char *sname = "Unknown host";
+	if (hres && he->ip == daddr)
+		sname = he->name;
+
 	int send_radv = 1;
 	if (!res || re->dst_ip != daddr) {
-		log_info("New route to %s through %s, hop: %d\n",
-		    inet_ntoa((struct in_addr){daddr}),
+		log_info("New route to %s(%s) through %s, hop: %d\n",
+		    inet_ntoa((struct in_addr){daddr}), sname,
 		    mac_tostring(addr->sll_addr, addr->sll_halen),
 		    hop_count);
 		re = calloc(1, sizeof(struct route_entry));
@@ -268,9 +277,9 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		    &re->dst_ip, addr_cmp);
 	} else {
 		if (re->hop_count > hop_count) {
-			log_info("Update route to %s through %s, hop: %d"
+			log_info("Update route to %s(%s) through %s, hop: %d"
 			    " to through %s, hop: %d\n",
-			    inet_ntoa((struct in_addr){daddr}),
+			    inet_ntoa((struct in_addr){daddr}), sname,
 			    mac_tostring(re->route_mac, re->halen),
 			    re->hop_count,
 			    mac_tostring(addr->sll_addr, addr->sll_halen),
@@ -281,9 +290,9 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 			re->halen = addr->sll_halen;
 			re->timestamp = get_timestamp();
 		} else if (re->hop_count == hop_count) {
-			log_info("Update timestamp on route to %s through %s,"
-			    "hop: %d\n", inet_ntoa((struct in_addr){daddr}),
-			    mac_tostring(re->route_mac, re->halen),
+			log_info("Update timestamp on route to %s(%s) through "
+			    "%s, hop:%d\n", inet_ntoa((struct in_addr){daddr}),
+			    sname, mac_tostring(re->route_mac, re->halen),
 			    re->hop_count);
 			re->timestamp = get_timestamp();
 		} else
@@ -333,6 +342,39 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 	} else
 		log_info("Nothing to update, route table unchanged\n");
 }
+static inline int
+host_entry_update(struct odr_protocol *op, uint32_t ip, uint32_t bid) {
+	//Looking up the source
+	struct skip_list_head *hres = skip_list_find_le(op->known_hosts,
+	    &ip, addr_cmp);
+	if (!hres) {
+		struct host_entry *he = calloc(1, sizeof(struct host_entry));
+		he->ip = ip;
+		he->last_broadcast_id = ntohl(bid);
+
+		struct in_addr tmpaddr;
+		tmpaddr.s_addr = ip;
+		struct hostent *h = gethostbyaddr(&tmpaddr, sizeof(tmpaddr),
+		    AF_INET);
+		he->name = strdup(h->h_name);
+		skip_list_insert(op->known_hosts, &he->h, &he->ip,
+				 addr_cmp);
+		return 1;
+	} else {
+		struct host_entry *he = skip_list_entry(hres,
+		    struct host_entry, h);
+		if (bid <= he->last_broadcast_id) {
+			log_info("Packet broadcast id is less than the last"
+			    "broadcast id recorded (%d < %d), possibly looping"
+			    "packets. discarding...\n", bid,
+			    he->last_broadcast_id+1);
+			return 0;
+		} else {
+			he->last_broadcast_id = bid;
+			return 1;
+		}
+	}
+}
 static inline void
 rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
@@ -340,27 +382,9 @@ rreq_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	if (ntohl(hdr->bid) > op->bid)
 		op->bid = ntohl(hdr->bid)+1;
 
-	//Looking up the source
-	struct skip_list_head *hres = skip_list_find_le(op->known_hosts,
-	    &hdr->saddr, addr_cmp);
-	if (!hres) {
-		struct host_entry *he = calloc(1, sizeof(struct host_entry));
-		he->ip = hdr->saddr;
-		he->last_broadcast_id = ntohl(hdr->bid);
-		skip_list_insert(op->known_hosts, &he->h, &hdr->saddr,
-				 addr_cmp);
-	} else {
-		struct host_entry *he = skip_list_entry(hres,
-		    struct host_entry, h);
-		if (ntohl(hdr->bid) <= he->last_broadcast_id) {
-			log_info("Packet broadcast id is less than the last"
-			    "broadcast id recorded (%d < %d), possibly looping"
-			    "packets. discarding...\n", ntohl(hdr->bid),
-			    he->last_broadcast_id+1);
-			return;
-		} else
-			he->last_broadcast_id = ntohl(hdr->bid);
-	}
+	int ret = host_entry_update(op, hdr->saddr, ntohl(hdr->bid));
+	if (!ret)
+		return;
 
 	if (hdr->daddr == op->myip) {
 		//We are the target
@@ -415,6 +439,7 @@ static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr, addr);
+	host_entry_update(op, hdr->saddr, -1);
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
@@ -434,6 +459,7 @@ static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr, addr);
+	host_entry_update(op, hdr->saddr, -1);
 
 	if (hdr->daddr != op->myip) {
 		//Route the packet
@@ -456,6 +482,7 @@ static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	route_table_update(op, hdr, addr);
+	host_entry_update(op, hdr->saddr, -1);
 }
 
 static inline void
