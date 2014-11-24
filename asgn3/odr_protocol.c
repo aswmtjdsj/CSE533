@@ -331,30 +331,30 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 
 		broadcast(op, buf, sizeof(struct odr_hdr), addr->sll_ifindex);
 		free(buf);
+	}
 
-		//Then check op->pending_msgs to send out all
-		//message we can send
-		log_info("Route updated, now checking if any pending messages"
-		    " become sendable\n");
-		struct msg *tmp = op->pending_msgs;
-		struct msg **nextp = &op->pending_msgs;
-		while(tmp) {
-			struct odr_hdr *hdr = tmp->buf;
-			if (hdr->daddr != daddr)
-				//Not the route we updated
-				continue;
-			int ret = send_msg_dontqueue(op, tmp);
-			if (ret) {
-				//Succeeded
-				*nextp = tmp->next;
-				free(tmp->buf);
-				free(tmp);
-				tmp = *nextp;
-			} else {
-				//Failed
-				nextp = &tmp->next;
-				tmp = tmp->next;
-			}
+	//Then check op->pending_msgs to send out all
+	//message we can send
+	log_info("Route updated, now checking if any pending messages"
+	    " become sendable\n");
+	struct msg *tmp = op->pending_msgs;
+	struct msg **nextp = &op->pending_msgs;
+	while(tmp) {
+		struct odr_hdr *hdr = tmp->buf;
+		if (hdr->daddr != daddr)
+			//Not the route we updated
+			continue;
+		int ret = send_msg_dontqueue(op, tmp);
+		if (ret) {
+			//Succeeded
+			*nextp = tmp->next;
+			free(tmp->buf);
+			free(tmp);
+			tmp = *nextp;
+		} else {
+			//Failed
+			nextp = &tmp->next;
+			tmp = tmp->next;
 		}
 	}
 }
