@@ -315,10 +315,7 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		}
 	}
 
-	if (noradv)
-		log_info("Not sending radv because we are going to broadcast"
-		    " the RREQ to all neighbour anyway\n");
-	else {
+	if (!noradv) {
 		void *buf = malloc(sizeof(struct odr_hdr));
 		struct odr_hdr *xhdr = buf;
 		xhdr->flags = htons(ODR_RADV|flags);
@@ -328,9 +325,9 @@ route_table_update(struct odr_protocol *op, struct odr_hdr *hdr,
 		xhdr->daddr = 0;
 		xhdr->saddr = daddr;
 
-		log_info("Route updated, now we are advertising the new route"
-		    " to our neighbours, exclude where it came in (%d)\n",
-		    addr->sll_ifindex);
+		log_info("Route updated due to RREQ, now we are advertising "
+		    "propagate the RREQ to our neighbours, except where it "
+		    "came in (%d)\n", addr->sll_ifindex);
 
 		broadcast(op, buf, sizeof(struct odr_hdr), addr->sll_ifindex);
 		free(buf);
@@ -461,7 +458,7 @@ static inline void
 rrep_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	host_entry_update(op, hdr->saddr, -1);
-	route_table_update(op, hdr, addr, 0);
+	route_table_update(op, hdr, addr, 1);
 
 	if (hdr->daddr != op->myip) {
 		//Route the RREP
@@ -480,7 +477,7 @@ static inline void
 data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
 	host_entry_update(op, hdr->saddr, -1);
-	route_table_update(op, hdr, addr, 0);
+	route_table_update(op, hdr, addr, 1);
 
 	if (hdr->daddr != op->myip) {
 		//Route the packet
@@ -501,7 +498,7 @@ data_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 static inline void
 radv_handler(struct odr_protocol *op, struct sockaddr_ll *addr) {
 	struct odr_hdr *hdr = op->buf;
-	route_table_update(op, hdr, addr, 0);
+	route_table_update(op, hdr, addr, 1);
 	host_entry_update(op, hdr->saddr, -1);
 }
 
