@@ -13,6 +13,7 @@
 #include "api.h"
 #include "mainloop.h"
 
+#define IPPROTO_XIANGYU 238
 /*
 #define HOST_NAME_MAX_LEN 32
 #define INPUT_BUF_MAX_LEN 20
