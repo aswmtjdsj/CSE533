@@ -21,6 +21,11 @@ struct skip_list_head {
 #define skip_list_entry(ptr, type, member) \
 	container_of(ptr, type, member)
 
+#define skip_list_foreach(head, tmp, ptr, type, member) \
+	for ((tmp) = (head)->next[0]; \
+	     (ptr) = skip_list_entry(tmp, type, member), (tmp); \
+	     (tmp) = (tmp)->next[0])
+
 #define skip_list_empty(ptr) \
 	((ptr)->next == NULL || (ptr)->next[0] == NULL)
 
@@ -107,6 +112,16 @@ skip_list_find_ge(struct skip_list_head *h, void *key, skip_list_cmp cmp){
 	struct skip_list_head *hs[MAX_HEIGHT];
 	skip_list_previous(h, key, cmp, hs);
 	return hs[0]->next[0];
+}
+
+//Find the smallest element that is greater than or equal to key.
+static inline struct skip_list_head *
+skip_list_find_eq(struct skip_list_head *h, void *key, skip_list_cmp cmp){
+	struct skip_list_head *hs[MAX_HEIGHT];
+	skip_list_previous(h, key, cmp, hs);
+	if (hs[0]->next[0] && cmp(hs[0]->next[0], key) == 0)
+		return hs[0]->next[0];
+	return NULL;
 }
 
 //Find the smallest element that is less than or equal to key.
