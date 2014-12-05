@@ -119,6 +119,9 @@ int main(int argc, const char **argv) {
 		my_err_quit("socket error!");
 	}
 
+	void * ml = mainloop_new();
+	mainloop_run(ml);
+
 ALL_DONE:
 	log_info("Gonna close ... Clearing junk ...\n");
 	while(tour_list != NULL) {
@@ -126,5 +129,6 @@ ALL_DONE:
 		free(tour_list);
 		tour_list = temp;
 	}
+	free(ml);
 	return code_flag;
 }
