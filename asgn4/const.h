@@ -8,6 +8,9 @@
 #include <time.h>
 #include <sys/time.h>
 
+#include <netinet/if_ether.h>
+#include <netinet/ip.h>
+
 #include "utils.h"
 #include "log.h"
 #include "api.h"
@@ -15,6 +18,10 @@
 
 #define IPPROTO_XIANGYU 238
 #define HOST_NAME_MAX_LEN 32
+#define IP_HDR_ID 23891
+#define MAX_IP_IN_PAYLOAD 32
+#define MULTICAST_IP "224.0.0.2"
+#define MULTICAST_PORT 17828
 /*
 #define INPUT_BUF_MAX_LEN 20
 #define MSG_MAX_LEN 50
