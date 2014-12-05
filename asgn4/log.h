@@ -33,9 +33,9 @@ int color_print(int log_level, const char *prefix, const char *postfix,
     }
     strcpy(hostname, str);
 	fputs(prefix, stderr);
-    fputs("<<<", stderr);
+    fputs("{", stderr);
     fputs(hostname, stderr);
-    fputs(">>> ", stderr);
+    fputs("} ", stderr);
 	va_list args;
 	va_start(args, fmt);
 	int ret = vfprintf(stderr, fmt, args);
