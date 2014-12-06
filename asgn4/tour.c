@@ -391,8 +391,7 @@ SEND_ICMP:
 
 	if((ret = sendto(sock_ping, frame_buf, frame_len, 0, 
 					(void *) &prec_hw, sizeof(prec_hw))) < 0) {
-		log_err("sendto error!\n");
-		return ;
+		my_err_quit("sendto error!");
 	}
 
 	signal(SIGALRM, sig_alarm);
@@ -422,8 +421,7 @@ void reply_callback(void * ml, void * data, int rw) {
 
 	if((recv_size = recvfrom(sock_fd, buffer, (size_t) packet_len, 0,
 					(struct sockaddr *) &src_addr, &src_addr_len)) < 0) {
-		log_err("recvfrom error\n");
-		return ;
+		my_err_quit("recvfrom error");
 	}
 
 	struct iphdr * r_hdr = (void *) buffer;

@@ -1,4 +1,4 @@
-CC = clang
+CC = gcc
 LIBS = -lrt
 tour_OBJS = tour.o utils.o mainloop.o arp_client.o
 arp_OBJS = arp.o utils.o mainloop.o
