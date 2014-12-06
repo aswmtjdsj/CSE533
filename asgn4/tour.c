@@ -71,16 +71,16 @@ struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id
     // hdr->frag_off
     // hdr->ttl
     hdr->protocol = IPPROTO_XIANGYU; // need network byte order?
-    hdr->saddr = htonl(src_addr);
-    hdr->daddr = htonl(dst_addr);
+    hdr->saddr = src_addr;
+    hdr->daddr = dst_addr;
     // hdr->check = in_cksum(); // do I need this?
     return hdr;
 }
 
 void show_ip_hdr(struct iphdr * hdr, const char * prompt) {
 	char str_src[IP_P_MAX_LEN], str_dst[IP_P_MAX_LEN];
-	strcpy(str_src, inet_ntoa((struct in_addr){ntohl(hdr->saddr)}));
-	strcpy(str_dst, inet_ntoa((struct in_addr){ntohl(hdr->daddr)}));
+	strcpy(str_src, inet_ntoa((struct in_addr){(hdr->saddr)}));
+	strcpy(str_dst, inet_ntoa((struct in_addr){(hdr->daddr)}));
 	log_debug("%s ip header: {ihl: %d, version: %d, total length: %d, id: %d, "
 			"protocol: %d, source address: %s, destination address: %s}\n", prompt,
 			hdr->ihl, ntohs(hdr->version), ntohs(hdr->tot_len), ntohs(hdr->id),
@@ -108,7 +108,7 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload,
          payload->ip_num = 0;
          struct tour_list_entry * temp_entry = tour_list;
          while(temp_entry != NULL) {
-             payload->ip_list[payload->ip_num] = htonl((temp_entry->ip_addr).sin_addr.s_addr);
+             payload->ip_list[payload->ip_num] = (temp_entry->ip_addr).sin_addr.s_addr;
              temp_entry = temp_entry->next;
 			 payload->ip_num += 1;
          }
@@ -133,7 +133,7 @@ void show_ip_payload(struct ip_payload * payload, const char * prompt) {
 	int i = 0, offset = 0;
 	for(; i < payload->ip_num; i++) {
 		offset += sprintf(str_list + offset, "%s, ",
-				inet_ntoa((struct in_addr){ntohl(payload->ip_list[i])}));
+				inet_ntoa((struct in_addr){(payload->ip_list[i])}));
 	}
 	log_debug("%s ip payload: {mcast_ip: %s, mcast_port: %d, "
 			"size of ip list: %d, current pointer: %d, ip_list: {%s}\n",
@@ -192,7 +192,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	// get host name of source address
     struct hostent * src_host = NULL;
 	struct in_addr src_ip = src_addr.sin_addr;
-	src_ip.s_addr = ntohl(src_ip.s_addr);
+	src_ip.s_addr = src_ip.s_addr;
 	if((src_host = gethostbyaddr(&src_ip, sizeof(struct in_addr), AF_INET)) == NULL) {
 		switch(h_errno) {
 			case HOST_NOT_FOUND:
@@ -209,7 +209,7 @@ void rt_callback(void * ml, void * data, int rw) {
 				log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
 				break;
 		}
-		log_err("gethostbyaddr error");
+		log_err("gethostbyaddr error\n");
 		return ;
 	}
 
@@ -227,15 +227,15 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 
 	// not the end, then resend
-	uint32_t s_addr = ntohl(r_hdr->daddr), d_addr;
-	if(s_addr != ntohl(r_payload->ip_list[r_payload->cur_pt + 1])) {
+	uint32_t s_addr = r_hdr->daddr, d_addr;
+	if(s_addr != r_payload->ip_list[r_payload->cur_pt + 1]) {
 		log_err("It's weird, the dst address retrieved from ip packet header "
 				"is different from the corresponding addr in ip list of ip packet payload"
 				", please check!\n");
 
 		char str_s[IP_P_MAX_LEN], str_d[IP_P_MAX_LEN];
 		strcpy(str_s, inet_ntoa((struct in_addr){s_addr}));
-		strcpy(str_d, inet_ntoa((struct in_addr){ntohl(r_payload->ip_list[r_payload->cur_pt + 1])}));
+		strcpy(str_d, inet_ntoa((struct in_addr){(r_payload->ip_list[r_payload->cur_pt + 1])}));
 		log_debug("s_addr: %s, cur_pt+1: %d, ip_list[cur_pt+1]: %s\n", 
 				str_s, r_payload->cur_pt+1, str_d);
 		return ;
@@ -265,7 +265,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	struct sockaddr_in prec_addr;
 	memset(&prec_addr, 0, sizeof(prec_addr));
 	addr_len = sizeof(prec_addr);
-	prec_addr.sin_addr.s_addr = ntohl(s_payload->ip_list[s_payload->cur_pt - 1]);
+	prec_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt - 1];
 	prec_addr.sin_family = AF_INET;
 
 	// detect pinging initiated or not
@@ -288,7 +288,7 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	/*int j = 0;
 	for(j = 0; j < s_payload->ip_num; j++) {
-		log_debug("#%d ip: %s\n", j, inet_ntoa((struct in_addr) {ntohl(s_payload->ip_list[j])}));
+		log_debug("#%d ip: %s\n", j, inet_ntoa((struct in_addr) {(s_payload->ip_list[j])}));
 	}*/
 
 	struct hwaddr prec_hw;
@@ -417,6 +417,7 @@ int main(int argc, const char **argv) {
 			if(i != argc) {
 				struct tour_list_entry * cur_entry = (struct tour_list_entry *) malloc(sizeof(struct tour_list_entry));
 				(cur_entry->ip_addr).sin_addr = *((struct in_addr *)(i_host->h_addr_list[0]));
+				// log_debug("!!!!!!!!!!!!!%s\n", inet_ntoa((cur_entry->ip_addr).sin_addr));
 				strcpy(cur_entry->host_name, argv[i]);
 				cur_entry->next = NULL;
 				*p_tail = cur_entry;
@@ -487,9 +488,18 @@ int main(int argc, const char **argv) {
 
         int n = 0;
         socklen_t addr_len = sizeof(tour_list->next->ip_addr);
-        tour_list->next->ip_addr.sin_family = AF_INET; // should be set
-        log_info("The source node <%s> is sending its tour packet to host <%s> via rt socket!\n", tour_list->host_name, tour_list->next->host_name);
-        if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->next->ip_addr), addr_len)) < 0) {
+		struct sockaddr_in dst_addr;
+		dst_addr.sin_family = AF_INET;
+		dst_addr.sin_addr = (tour_list->next->ip_addr).sin_addr;
+
+		char str_s[IP_P_MAX_LEN], str_d[IP_P_MAX_LEN];
+		strcpy(str_s, inet_ntoa((struct in_addr) {s_addr}));
+		strcpy(str_d, inet_ntoa(dst_addr.sin_addr));
+
+        log_info("The source node %s (%s) is sending its tour packet to host %s (%s) via rt socket!\n",
+				tour_list->host_name, str_s,
+				tour_list->next->host_name, str_d);
+        if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
             my_err_quit("sendto error");
         }
     }
