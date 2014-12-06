@@ -14,6 +14,31 @@ struct ip_payload {
     uint32_t ip_list[MAX_IP_IN_PAYLOAD];
 };
 
+struct ping_entry {
+	uint32_t ip_addr;
+	struct ping_entry * next;
+} * ping_list;
+
+struct ping_entry * search_ping_list(uint32_t ip_addr) {
+	struct ping_entry * temp_entry = ping_list;
+
+	while(temp_entry != NULL) {
+		if(temp_entry->ip_addr == ip_addr) { // both in host byte order
+			return temp_entry;
+		}
+		temp_entry = temp_entry->next;
+	}
+
+	return NULL;
+}
+
+void insert_ping_entry(uint32_t ip_addr) {
+	struct ping_entry * cur = (struct ping_entry *)malloc(sizeof(struct ping_entry));
+	cur->ip_addr = ip_addr;
+	cur->next = ping_list;
+	ping_list = cur;
+}
+
 void show_tour_list() {
 	struct tour_list_entry * temp_entry = tour_list;
 	int cnt = 0;
@@ -280,6 +305,8 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 
 	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), 0 /* TODO */);
+
+	struct icmp * icmp;
 	// TODO
 }
 
@@ -299,6 +326,7 @@ int main(int argc, const char **argv) {
 	int code_flag = EXIT_SUCCESS;
     int source_node_flag = 0;
     int ret = 0; // return status
+	ping_list = NULL; // pinging hasn't been initiated
 
 	char local_name[HOST_NAME_MAX_LEN], tmp_str[HOST_NAME_MAX_LEN];
     if(gethostname(tmp_str, sizeof(tmp_str)) < 0) {
