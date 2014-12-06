@@ -46,7 +46,7 @@ struct cache_entry {
 };
 
 struct arp_protocol {
-	int fd, areq_fd;
+	int fd, areq_fd, raw_fd;
 	uint16_t hatype;
 	uint8_t halen;
 	uint8_t hwaddr[8];
@@ -210,6 +210,7 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 		memcpy(msg->data, p->hwaddr, ETH_ALEN);
 		memcpy(ehdr->ether_shost, p->hwaddr, ETH_ALEN);
 		memcpy(msg->data+msg->hlen, &addrv4, 4);
+		msg->oper = htons(ARPOP_REPLY);
 
 		struct sockaddr_ll lladdr;
 		lladdr.sll_ifindex = addr->sll_ifindex;
@@ -325,6 +326,11 @@ void areq_callback(void *ml, void *data, int rw) {
 
 	skip_list_insert(&ce->clients, &nc->h, &fd, client_cmp);
 	nc->owner = ce;
+
+	struct sockaddr_in req_addr;
+	req_addr.sin_addr.s_addr = ip;
+	req_addr.sin_family = AF_INET;
+	areq_request(nc, (void *)&req_addr, p);
 }
 void listen_cb(void *ml, void *data, int rw) {
 	struct arp_protocol *p = data;
@@ -336,6 +342,29 @@ void listen_cb(void *ml, void *data, int rw) {
 	nc->fh = fd_insert(ml, fd, FD_READ, areq_callback, nc);
 	nc->owner = NULL;
 	nc->p = p;
+}
+void arp_callback(void *ml, void *data, int rw) {
+	struct arp_protocol *p = data;
+	uint8_t buf[1500];
+	struct sockaddr_ll lladdr;
+	struct ether_header *ehdr = (void *)buf;
+	struct arp *msg = (void *)(ehdr+1);
+	socklen_t len;
+
+	int ret = recvfrom(p->raw_fd, buf, sizeof(buf), 0,
+	    (void *)&lladdr, &len);
+	if (ret < 0) {
+		log_err("Failed to recv from raw socket\n");
+		return;
+	}
+
+	uint16_t o = ntohs(msg->oper);
+	if (o == ARPOP_REQUEST)
+		arp_req_callback(ml, buf, &lladdr, p);
+	else if (o == ARPOP_REPLY)
+		arp_reply_callback(ml, buf, &lladdr, p);
+	else
+		log_warn("Unknown arp packet\n");
 }
 static struct arp_protocol p;
 int main(int argc, const char **argv) {
@@ -385,6 +414,9 @@ int main(int argc, const char **argv) {
 
 	p.ml = mainloop_new();
 	fd_insert(p.ml, areq_sock, FD_READ, listen_cb, &p);
+
+	p.raw_fd = socket(AF_PACKET, SOCK_RAW, htons(ARP_MAGIC));
+	fd_insert(p.ml, p.raw_fd, FD_READ, arp_callback, &p);
 
 	mainloop_run(p.ml);
 	return 0;
