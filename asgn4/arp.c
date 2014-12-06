@@ -119,7 +119,7 @@ arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
 	int ret = sendto(p->fd, buf,
 	    sizeof(struct arp)+sizeof(struct ether_header),
 	    0, (void *)&lladdr, sizeof(lladdr));
-	if (ret)
+	if (ret < 0)
 		log_warn("sendto via interface %d failed, %s\n",
 		    p->eth0_ifidx, strerror(errno));
 	return;
