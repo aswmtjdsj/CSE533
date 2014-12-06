@@ -11,7 +11,7 @@ CFLAGS = -g -Wall -Wno-unused-function
 all: $(OBJS) $(BINARIES)
 
 %.P : %.c
-	gcc -MM -MT $(<:.c=.o) -MT $(<:.c=.P) -MF $@ $<
+	$(CC) -MM -MT $(<:.c=.o) -MT $(<:.c=.P) -MF $@ $<
 
 -include $(OBJS:.o=.P)
 
