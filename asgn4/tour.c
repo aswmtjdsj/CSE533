@@ -42,12 +42,16 @@ struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id
     return hdr;
 }
 
-struct ip_payload * make_ip_payload(struct ip_payload * payload, uint32_t m_ip, uint32_t m_port, uint8_t cur_pointer, struct tour_list_entry * tour_list, struct ip_payload * prev) {
+struct ip_payload * make_ip_payload(struct ip_payload * payload,
+		uint32_t m_ip, uint32_t m_port,
+		uint8_t cur_pointer,
+		struct tour_list_entry * tour_list, struct ip_payload * prev) {
     // struct ip_payload * payload = NULL;
     if(!((tour_list == NULL) ^ (prev == NULL))) {
         log_err("tour list and previous payload could not be NULL or valid at the same time!\n");
         exit(EXIT_FAILURE);
     }
+
     if(prev == NULL) {
          // payload = (struct ip_payload *) malloc(sizeof(struct ip_payload));
          payload->mcast_ip = htonl(m_ip);
@@ -71,6 +75,30 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload, uint32_t m_ip, 
     }
 
     return payload;
+}
+
+void rt_callback(void * ml, void * data, int rw) {
+
+	log_debug("Received ip packet via rt!\n");
+	struct fd * fh = data;
+	int sock_fd = fd_get_fd(fh);
+
+	int packet_len = sizeof(struct iphdr) + sizeof(struct ip_payload);
+	uint8_t * buffer = malloc(packet_len);
+	int recv_size = 0;
+	struct sockaddr_in src_addr;
+	memset(&src_addr, 0, sizeof(src_addr));
+	socklen_t src_addr_len = sizeof(src_addr);
+
+	if((recv_size = recvfrom(sock_fd, buffer, (size_t) packet_len, 0,
+					(struct sockaddr *) &src_addr, &src_addr_len)) < 0) {
+		my_err_quit("recvfrom error");
+	}
+
+	struct iphdr * r_hdr = (void *) buffer;
+	struct ip_payload * r_payload = (struct ip_payload *) (r_hdr + 1);
+
+	// resend
 }
 
 int main(int argc, const char **argv) {
@@ -177,8 +205,17 @@ int main(int argc, const char **argv) {
 		my_err_quit("socket error");
 	}
 
+	// TODO: for multicast
+
+	log_debug("mainloop gonna start!\n");
+	void * ml = mainloop_new();
+	void * fh = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
+	log_debug("LOL\n");
+	fd_set_data(fh, fh);
+
     // for source node, it should actively send
     if(source_node_flag) {
+		log_debug("Source node should send initial message!\n");
         unsigned char * packet = malloc(sizeof(struct iphdr) + sizeof(struct ip_payload));
         struct iphdr * i_hdr = (struct iphdr *) packet;
         struct ip_payload * i_payload = (struct ip_payload *) (i_hdr + 1);
@@ -200,7 +237,6 @@ int main(int argc, const char **argv) {
         }
     }
 
-	void * ml = mainloop_new();
 	mainloop_run(ml);
 
 ALL_DONE:
