@@ -486,10 +486,10 @@ int main(int argc, const char **argv) {
 		show_ip_payload(i_payload, "i_payload");
 
         int n = 0;
-        socklen_t addr_len = sizeof(tour_list->ip_addr);
-        tour_list->ip_addr.sin_family = AF_INET; // should be set
-        log_info("The source node <%s> is sending its tour packet via rt socket!\n", tour_list->host_name);
-        if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->ip_addr), addr_len)) < 0) {
+        socklen_t addr_len = sizeof(tour_list->next->ip_addr);
+        tour_list->next->ip_addr.sin_family = AF_INET; // should be set
+        log_info("The source node <%s> is sending its tour packet to host <%s> via rt socket!\n", tour_list->host_name, tour_list->next->host_name);
+        if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->next->ip_addr), addr_len)) < 0) {
             my_err_quit("sendto error");
         }
     }
