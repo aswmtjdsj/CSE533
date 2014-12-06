@@ -105,6 +105,7 @@ _fill_ifi_info(struct ifreq *ifr, int flags, struct ifi_info *ifi) {
 		ifi->ifi_mtu = ifr->ifr_metric;
 	if (!ioctl(sockfd, SIOCGIFHWADDR, ifr)) {
 		memcpy(ifi->ifi_hwaddr, ifr->ifr_hwaddr.sa_data, IFHWADDRLEN);
+		ifi->ifi_hatype = 1;
 		ifi->ifi_halen = IFHWADDRLEN;
 	} else
 		log_err("Failed to get hardware address for %s\n",

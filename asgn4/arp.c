@@ -75,7 +75,7 @@ static inline int client_cmp(struct skip_list_head *h, const void *b) {
 }
 
 static inline void
-arp_dump(struct arp *msg) {
+arp_dump(const struct arp *msg) {
 	log_info("ARP packet dump:\n");
 	log_info("\thlen: %u\n", msg->hlen);
 	log_info("\tplen: %u\n", msg->plen);
@@ -84,8 +84,8 @@ arp_dump(struct arp *msg) {
 	log_info("\toper: %u\n", ntohs(msg->oper));
 
 	uint32_t saddr, taddr;
-	memcpy(msg->data+msg->hlen, &saddr, 4);
-	memcpy(msg->data+msg->hlen+2*msg->plen, &taddr, 4);
+	memcpy(&saddr, msg->data+msg->hlen, 4);
+	memcpy(&taddr, msg->data+msg->hlen*2+msg->plen, 4);
 
 	log_info("\tsource ip: %s\n", inet_ntoa((struct in_addr){saddr}));
 	log_info("\ttarget ip: %s\n", inet_ntoa((struct in_addr){taddr}));
@@ -108,24 +108,22 @@ arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
 	struct arp *msg = (void *)(ehdr+1);
 	struct skip_list_head *tmp = p->myip.next[0];
 	struct ip_record *ptr = skip_list_entry(tmp, struct ip_record, h);
-	msg->hatype = p->hatype;
+	msg->hatype = htons(p->hatype);
 	msg->hlen = p->halen;
 	ehdr->ether_type = htons(ARP_MAGIC);
 	memcpy(ehdr->ether_shost, p->hwaddr, ETH_ALEN);
 	memcpy(msg->data, p->hwaddr, p->halen);
 	msg->oper = htons(ARPOP_REQUEST);
 
-	int pos = p->halen;
 	struct sockaddr_in *sin = (void *)addr;
 	switch (addr->sa_family) {
 		case AF_INET:
 			msg->ptype = htons(ETHERTYPE_IP);
 			msg->plen = 4;
-			memcpy(msg->data+pos, &ptr->ip, 4);
-			pos += 4;
-			memset(msg->data+pos, 255, p->halen);
-			pos += p->halen;
-			memcpy(msg->data+pos, &sin->sin_addr, 4);
+			memcpy(msg->data+msg->hlen, &ptr->ip, 4);
+			log_debug("XXX%s\n", inet_ntoa((struct in_addr){ptr->ip}));
+			memset(msg->data+msg->hlen+msg->plen, 255, p->halen);
+			memcpy(msg->data+msg->hlen*2+msg->plen, &sin->sin_addr, 4);
 			break;
 		default:
 			log_err("Unsupported address family %u\n",
@@ -215,7 +213,7 @@ void send_areq_reply(struct cache_entry *ce, struct arp_protocol *p) {
 	    struct client, h) {
 		int fd = fd_get_fd(c->fh);
 		int ret = send(fd, &reply, sizeof(reply), 0);
-		if (ret)
+		if (ret < 0)
 			log_err("Send areq reply failed %s\n",
 			    strerror(errno));
 		skip_list_delete(&c->h);
@@ -224,28 +222,44 @@ void send_areq_reply(struct cache_entry *ce, struct arp_protocol *p) {
 	}
 }
 
-void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
+void arp_req_callback(void *ml, const void *buf, struct sockaddr_ll *addr,
 		      struct arp_protocol *p) {
-	struct ether_header *ehdr;
-	struct arp *msg;
+	const struct ether_header *ehdr;
+	const struct arp *msg;
+	uint8_t rbuf[1500];
+	struct ether_header *rehdr = (void *)rbuf;
+	struct arp *rmsg = (void *)(rehdr+1);
 
 	log_info("Received arp request:\n");
 
-	ehdr = (void *)buf;
-	msg = (void *)(ehdr+1);
+	ehdr = (const void *)buf;
+	msg = (const void *)(ehdr+1);
 	arp_dump(msg);
 
 	uint16_t ptype = ntohs(msg->ptype);
 	uint32_t addrv4, saddrv4;
+	if (ntohs(msg->hatype) != ARPHRD_ETHER) {
+		log_warn("Unsupported link layer protocol\n");
+		return;
+	}
+	if (msg->hlen != ETH_ALEN) {
+		log_warn("Wrong hardware address length\n");
+		return;
+	}
+	if (msg->plen != 4) {
+		log_warn("Wrong protocol address length\n");
+		return;
+	}
 	switch(ptype) {
 		case ETHERTYPE_IP:
-			memcpy(msg->data+msg->plen+msg->hlen, &addrv4, 4);
-			memcpy(msg->data+msg->hlen, &saddrv4, 4);
+			memcpy(&addrv4, msg->data+msg->plen+msg->hlen*2, 4);
+			memcpy(&saddrv4, msg->data+msg->hlen, 4);
 			break;
 		default:
 			log_warn("Unsupported ether type %04X\n", ptype);
 			break;
 	}
+
 	struct skip_list_head *res = skip_list_find_eq(&p->myip,
 	    &addrv4, addr_cmp);
 	struct skip_list_head *cres = skip_list_find_eq(&p->cache,
@@ -270,25 +284,28 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 		//Reply and update cache
 		//Copy source addr to dst addr
 		log_info("Target is me, construct reply\n");
-		memcpy(msg->data+msg->plen+msg->hlen, msg->data,
-		    msg->plen+msg->hlen);
+		memcpy(rmsg, msg, sizeof(*msg)-sizeof(msg->data));
+		memcpy(rmsg->data+rmsg->plen+rmsg->hlen, msg->data,
+		    rmsg->plen+rmsg->hlen);
 		assert(p->halen == msg->hlen);
 		assert(msg->hlen == ETH_ALEN);
-		ehdr->ether_type = htons(ARP_MAGIC);
-		memcpy(ehdr->ether_dhost, msg->data, ETH_ALEN);
-		memcpy(msg->data, p->hwaddr, ETH_ALEN);
-		memcpy(ehdr->ether_shost, p->hwaddr, ETH_ALEN);
-		memcpy(msg->data+msg->hlen, &addrv4, 4);
-		msg->oper = htons(ARPOP_REPLY);
+		rehdr->ether_type = htons(ARP_MAGIC);
+		memcpy(rehdr->ether_dhost, msg->data, ETH_ALEN);
+		memcpy(rmsg->data, p->hwaddr, ETH_ALEN);
+		memcpy(rehdr->ether_shost, p->hwaddr, ETH_ALEN);
+		memcpy(rmsg->data+rmsg->hlen, &addrv4, 4);
+		rmsg->oper = htons(ARPOP_REPLY);
+		log_info("Sending arp reply\n");
+		arp_dump(rmsg);
 
 		struct sockaddr_ll lladdr;
 		lladdr.sll_ifindex = addr->sll_ifindex;
 		memcpy(lladdr.sll_addr, ehdr->ether_dhost, ETH_ALEN);
 		lladdr.sll_protocol = htons(ARP_MAGIC);
 		lladdr.sll_family = AF_PACKET;
-		int ret = sendto(p->fd, buf, sizeof(struct ether_header)+
+		int ret = sendto(p->fd, rbuf, sizeof(struct ether_header)+
 		    sizeof(struct arp), 0, (void *)&lladdr, sizeof(lladdr));
-		if (ret)
+		if (ret < 0)
 			log_warn("Send reply failed %s\n", strerror(errno));
 		log_info("Update cache entry from source addresses\n");
 		if (cres) {
@@ -321,11 +338,11 @@ void arp_reply_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	log_info("Received arp reply\n");
 	arp_dump(msg);
 
-	if (msg->hatype != p->hatype) {
+	if (ntohs(msg->hatype) != p->hatype) {
 		log_err("Received reply from a different type of network\n");
 		return;
 	}
-	if (msg->ptype != ETHERTYPE_IP) {
+	if (ntohs(msg->ptype) != ETHERTYPE_IP) {
 		log_err("Received reply for unsupported protocol\n");
 		return;
 	}
@@ -423,10 +440,11 @@ int main(int argc, const char **argv) {
 			p.eth0_ifidx = tmp->ifi_index;
 			skip_list_insert(&p.myip, &ir->h, &ir->ip, addr_cmp);
 			if (tmp->ifi_halen != ETH_ALEN)
-				log_info("Unsupported network device\n");
+				log_info("Unsupported network device %u\n", tmp->ifi_halen);
 			else {
 				memcpy(p.hwaddr, tmp->ifi_hwaddr, tmp->ifi_halen);
 				p.halen = tmp->ifi_halen;
+				p.hatype = tmp->ifi_hatype;
 			}
 		}
 	}

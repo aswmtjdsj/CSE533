@@ -25,6 +25,7 @@ struct ifi_info {
   struct sockaddr	*ifi_dstaddr;	/* destination address */
   struct sockaddr	*ifi_ntmaddr;	/* netmask address */
   uint8_t		ifi_hwaddr[8];	/* hardware address */
+  uint8_t		ifi_hatype;	/* hatype */
   short			ifi_halen;	/* hardware address length*/
   struct ifi_info	*ifi_next;	/* next of these structures */
 };
