@@ -228,13 +228,13 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	// if this is the first time this node received a IP packet
 	// then TODO
-	log_info("First time!\n");
+	log_info("Node visited for the first time! Gonna join the multicast group!\n");
 	// multicast
 	
 	// if this is the end node of the tour
 	if(r_payload->cur_pt + 1 >= r_payload->ip_num - 1) {
 		// TODO
-		log_info("End of the tour list!\n");
+		log_info("End of the tour list! Begin multicasting!\n");
 
 	} else {
 		// not the end, then resend
@@ -362,6 +362,14 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 	memcpy(e_hdr->ether_dhost, prec_hw.sll_addr, prec_hw.sll_halen);
 
+	struct sockaddr_ll lladdr;
+	lladdr.sll_ifindex = prec_hw.sll_ifindex;
+	lladdr.sll_protocol = IPPROTO_ICMP;
+	lladdr.sll_halen = prec_hw.sll_halen;
+	lladdr.sll_family = AF_PACKET;
+	lladdr.sll_hatype = prec_hw.sll_hatype;
+	memcpy(lladdr.sll_addr, prec_hw.sll_addr, prec_hw.sll_halen);
+
 	struct iphdr * ip_hdr = (struct iphdr *) (e_hdr + 1);
 	ip_hdr = make_ip_hdr(ip_hdr, sizeof(struct icmp) + data_len,
 			IP_HDR_ID, IPPROTO_ICMP, src_ip.s_addr, prec_addr.sin_addr.s_addr);
@@ -389,17 +397,9 @@ SEND_ICMP:
 		return ;
 	}
 
-	struct sockaddr_ll lladdr;
-	lladdr.sll_ifindex = prec_hw.sll_ifindex;
-	lladdr.sll_protocol = IPPROTO_ICMP;
-	lladdr.sll_halen = prec_hw.sll_halen;
-	lladdr.sll_family = AF_PACKET;
-	lladdr.sll_hatype = prec_hw.sll_hatype;
-	memcpy(lladdr.sll_addr, prec_hw.sll_addr, prec_hw.sll_halen);
-
 	if((ret = sendto(sock_ping, frame_buf, frame_len,
 					0, (void *) &lladdr, sizeof(lladdr))) < 0) {
-		my_err_quit("sendto error!");
+		my_err_quit("sendto error");
 	}
 
 	signal(SIGALRM, sig_alarm);
@@ -544,7 +544,7 @@ int main(int argc, const char **argv) {
 		show_tour_list();
 	}
 
-	int sock_rt, sock_pg_reply, sock_pg_send, sock_un; // unix sock, need think
+	int sock_rt, sock_pg_reply, sock_pg_send, mcast_send, mcast_recv;
 
 	// create route traversal socket, IP RAW, with self-defined protocol value
 	if((sock_rt = socket(AF_INET, SOCK_RAW, IPPROTO_XIANGYU)) < 0) {
@@ -567,7 +567,35 @@ int main(int argc, const char **argv) {
 		my_err_quit("socket error");
 	}
 
+	// for multicast
+	if((mcast_send = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		my_err_quit("socket error");
+	}
+	/* TODO for send */
+
+	if((mcast_recv = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		my_err_quit("socket error");
+	}
+	
+	if(setsockopt(mcast_recv, SOL_SOCKET, SO_REUSEADDR, &on_flag, sizeof(on_flag)) < 0) {
+		my_err_quit("setsockopt error");
+	}
+
+	struct in_addr mul_addr;
+	memset(&mul_addr, 0, sizeof(mul_addr));
+	if((ret = inet_pton(AF_INET, MULTICAST_IP, &mul_addr)) < 0) {
+		my_err_quit("inet_pton error");
+	}
+	struct sockaddr_in multicast_addr;
+	multicast_addr.sin_family = AF_INET;
+	multicast_addr.sin_addr = mul_addr;
+
+	if(bind(mcast_recv, (struct sockaddr *) &multicast_addr, sizeof(multicast_addr)) < 0) {
+		my_err_quit("bind error");
+	}
+
 	// TODO: for multicast
+	log_info("Source node gonna join the multicast group!\n");
 
 	log_debug("mainloop gonna start!\n");
 	void * ml = mainloop_new();
