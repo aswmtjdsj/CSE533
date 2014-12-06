@@ -16,7 +16,7 @@ int areq(struct sockaddr *addr, socklen_t len, struct hwaddr *rep) {
 	struct sockaddr_un addr_un;
 	addr_un.sun_family = AF_UNIX;
 	memset(addr_un.sun_path, 0, sizeof(addr_un.sun_path));
-	strcpy(addr_un.sun_path+1, "areq_" ID);
+	strcpy(addr_un.sun_path+1, "arp_" ID);
 
 	int ret = connect(fd, (void *)&addr_un, sizeof(addr_un));
 	if (ret < 0) {
