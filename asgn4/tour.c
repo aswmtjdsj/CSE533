@@ -167,10 +167,12 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	// if this is the first time this node received a IP packet
 	// then TODO
+	log_info("First time!\n");
 	
 	// if this is the end node of the tour
 	if(r_payload->cur_pt + 1 == r_payload->ip_num) {
 		// TODO
+		log_info("End of the tour list!\n");
 		return ;
 	}
 
@@ -212,6 +214,14 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	// init ping 
 	// TODO
+}
+
+void reply_callback(void * ml, void * data, int rw) {
+	// ping reply callback
+
+	log_debug("Received ping echo request via pg_reply!\n");
+	struct fd * fh = data;
+	int sock_fd = fd_get_fd(fh);
 }
 
 int main(int argc, const char **argv) {
@@ -329,8 +339,13 @@ int main(int argc, const char **argv) {
 
 	log_debug("mainloop gonna start!\n");
 	void * ml = mainloop_new();
-	void * fh = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
-	fd_set_data(fh, fh);
+	void * fh_rt = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
+	fd_set_data(fh_rt, fh_rt);
+
+	void * fh_pg_reply = fd_insert(ml, sock_pg_reply, FD_READ, reply_callback, NULL);
+	fd_set_data(fh_pg_reply, fh_pg_reply);
+
+	/*void * fh_pg_send = */fd_insert(ml, sock_pg_send, FD_READ, NULL, NULL);
 
     // for source node, it should actively send
     if(source_node_flag) {
@@ -352,7 +367,7 @@ int main(int argc, const char **argv) {
         int n = 0;
         socklen_t addr_len = sizeof(tour_list->ip_addr);
         tour_list->ip_addr.sin_family = AF_INET; // should be set
-        log_debug("gonna send ip packet via rt sock to host <%s>!\n", tour_list->next->host_name);
+        log_info("The source node <%s> is sending its tour packet via rt socket!\n", tour_list->next->host_name);
         if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->ip_addr), addr_len)) < 0) {
             my_err_quit("sendto error");
         }
