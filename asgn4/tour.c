@@ -42,15 +42,16 @@ struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id
     return hdr;
 }
 
-void show_ip_hdr(struct iphdr * hdr) {
-	log_debug("ip header>\n");
-	log_debug("\tihl: %d\n", hdr->ihl);
-	log_debug("\tversion: %d\n", ntohs(hdr->version));
-	log_debug("\ttotal length: %d\n", ntohs(hdr->tot_len));
-	log_debug("\tid: %d\n", ntohs(hdr->id));
-	log_debug("\tprotocol: %d\n", hdr->protocol);
-	log_debug("\tsource address: %s\n", inet_ntoa((struct in_addr){ntohl(hdr->saddr)}));
-	log_debug("\tdestination address: %s\n", inet_ntoa((struct in_addr){ntohl(hdr->daddr)}));
+void show_ip_hdr(struct iphdr * hdr, const char * prompt) {
+	char str_src[IP_P_MAX_LEN], str_dst[IP_P_MAX_LEN];
+	strcpy(str_src, inet_ntoa((struct in_addr){ntohl(hdr->saddr)}));
+	strcpy(str_dst, inet_ntoa((struct in_addr){ntohl(hdr->daddr)}));
+	log_debug("%s ip header: {ihl: %d, version: %d, total length: %d, id: %d, "
+			"protocol: %d, source address: %s, destination address: %s}\n", prompt,
+			hdr->ihl, ntohs(hdr->version), ntohs(hdr->tot_len), ntohs(hdr->id),
+			hdr->protocol,
+			str_src,
+			str_dst);
 }
 
 struct ip_payload * make_ip_payload(struct ip_payload * payload,
@@ -113,7 +114,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 
 	struct iphdr * r_hdr = (void *) buffer;
-	show_ip_hdr(r_hdr);
+	show_ip_hdr(r_hdr, "received");
 	struct ip_payload * r_payload = (struct ip_payload *) (r_hdr + 1);
 
 	// check ID
@@ -179,24 +180,32 @@ void rt_callback(void * ml, void * data, int rw) {
 		log_err("It's weird, the dst address retrieved from ip packet header "
 				"is different from the corresponding addr in ip list of ip packet payload"
 				", please check!\n");
+
+		char str_s[IP_P_MAX_LEN], str_d[IP_P_MAX_LEN];
+		strcpy(str_s, inet_ntoa((struct in_addr){s_addr}));
+		strcpy(str_d, inet_ntoa((struct in_addr){ntohl(r_payload->ip_list[r_payload->cur_pt + 1])}));
 		log_debug("s_addr: %s, cur_pt+1: %d, ip_list[cur_pt+1]: %s\n", 
-				inet_ntoa((struct in_addr){s_addr}), 
-				r_payload->cur_pt+1, inet_ntoa((struct in_addr){r_payload->ip_list[r_payload->cur_pt + 1]}));
+				str_s, r_payload->cur_pt+1, str_d);
 		return ;
 	}
+	// prev source, prev dest | cur source, cur dst
+	// cur_pt, cur_pt + 1, cur_pt + 2
 	d_addr = r_payload->ip_list[r_payload->cur_pt + 2];
+
 	struct iphdr * s_hdr = (struct iphdr *) packet;
 	s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
+	show_ip_hdr(s_hdr, "sending");
 	struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
 	s_payload = make_ip_payload(s_payload, 0, 0, 0, NULL, r_payload);
+	// cur_pt has incremented
 
 	int n = 0;
 	struct sockaddr_in dst_addr;
 	memset(&dst_addr, 0, sizeof(dst_addr));
 	socklen_t addr_len = sizeof(dst_addr);
-	dst_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt];
+	dst_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt + 1];
 	dst_addr.sin_family = AF_INET;
-	log_debug("gonna send tour ip packet via rt sock!\n");
+	log_debug("gonna send tour ip packet via rt sock to host <?>!\n"); // TODO
 	if((n = sendto(sock_fd, packet, ntohs(s_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
 		my_err_quit("sendto error");
 	}
@@ -332,10 +341,12 @@ int main(int argc, const char **argv) {
         uint32_t s_addr = (tour_list->ip_addr).sin_addr.s_addr, d_addr = (tour_list->next->ip_addr).sin_addr.s_addr;
         i_hdr = make_ip_hdr(i_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
 
+		show_ip_hdr(i_hdr, "first");
+
         int n = 0;
         socklen_t addr_len = sizeof(tour_list->ip_addr);
         tour_list->ip_addr.sin_family = AF_INET; // should be set
-        log_debug("gonna send ip packet via rt sock!\n");
+        log_debug("gonna send ip packet via rt sock to host <%s>!\n", tour_list->next->host_name);
         if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->ip_addr), addr_len)) < 0) {
             my_err_quit("sendto error");
         }
