@@ -224,11 +224,13 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 
 	if (!res) {
 		//Not for me
+		log_info("Target of the arp request is not me\n");
 		if (cres) {
 			struct cache_entry *ce = skip_list_entry(cres,
 			    struct cache_entry, h);
 			if (ce->incomplete)
 				return;
+			log_info("Updating cache entry\n");
 			//Update cache entry
 			if (memcmp(ce->hwaddr, msg->data, ETH_ALEN) == 0)
 				return;
@@ -237,6 +239,7 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	} else {
 		//Reply and update cache
 		//Copy source addr to dst addr
+		log_info("Target is me, construct reply\n");
 		memcpy(msg->data+msg->plen+msg->hlen, msg->data,
 		    msg->plen+msg->hlen);
 		assert(p->halen == msg->hlen);
@@ -257,6 +260,7 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 		    sizeof(struct arp), 0, (void *)&lladdr, sizeof(lladdr));
 		if (ret)
 			log_warn("Send reply failed %s\n", strerror(errno));
+		log_info("Update cache entry from source addresses\n");
 		if (cres) {
 			struct cache_entry *ce = skip_list_entry(cres,
 			    struct cache_entry, h);
