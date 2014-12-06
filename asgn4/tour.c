@@ -1,10 +1,20 @@
 #include "const.h"
 
+static sigjmp_buf jmpbuf;
+void sig_alarm(int signo) {
+	siglongjmp(jmpbuf, 1);
+}
+
 struct tour_list_entry {
 	struct sockaddr_in ip_addr;
 	struct tour_list_entry * next;
 	char host_name[HOST_NAME_MAX_LEN];
 } * tour_list;
+
+struct bound {
+	void * fh1;
+	void * fh2;
+};
 
 struct ip_payload {
     uint32_t mcast_ip;
@@ -61,7 +71,7 @@ void show_tour_list() {
 	}
 }
 
-struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id, uint32_t src_addr, uint32_t dst_addr) {
+struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id, uint8_t protocol, uint32_t src_addr, uint32_t dst_addr) {
     // struct iphdr * hdr = (struct iphdr *) malloc(sizeof(struct iphdr));
     hdr->ihl = 5;
     hdr->version = 4;
@@ -70,7 +80,7 @@ struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id
     hdr->id = htons(id);
     // hdr->frag_off
     // hdr->ttl
-    hdr->protocol = IPPROTO_XIANGYU; // need network byte order?
+    hdr->protocol = protocol; 
     hdr->saddr = src_addr;
     hdr->daddr = dst_addr;
     // hdr->check = in_cksum(); // do I need this?
@@ -145,7 +155,8 @@ void show_ip_payload(struct ip_payload * payload, const char * prompt) {
 void rt_callback(void * ml, void * data, int rw) {
 
 	log_debug("Received ip packet via rt!\n");
-	struct fd * fh = data;
+	struct bound * bd = data;
+	struct fd * fh = bd->fh2;
 	int sock_fd = fd_get_fd(fh);
 
 	int packet_len = sizeof(struct iphdr) + sizeof(struct ip_payload);
@@ -218,6 +229,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	// if this is the first time this node received a IP packet
 	// then TODO
 	log_info("First time!\n");
+	// multicast
 	
 	// if this is the end node of the tour
 	if(r_payload->cur_pt + 1 >= r_payload->ip_num - 1) {
@@ -245,7 +257,7 @@ void rt_callback(void * ml, void * data, int rw) {
 
 		uint8_t * packet = malloc(packet_len);
 		struct iphdr * s_hdr = (struct iphdr *) packet;
-		s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
+		s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, IPPROTO_XIANGYU, s_addr, d_addr);
 		show_ip_hdr(s_hdr, "sending");
 		struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
 		s_payload = make_ip_payload(s_payload, 0, 0, 0, NULL, r_payload);
@@ -329,18 +341,99 @@ void rt_callback(void * ml, void * data, int rw) {
 		log_err("gethostbyaddr error");
 	}
 
-	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), 0 /* TODO */);
+	struct fd * fh_ping = bd->fh1;
+	int sock_ping = fd_get_fd(fh_ping);
+	uint8_t frame_buf[1500] = { 0 };
+	int data_len = 56, frame_len = 
+		sizeof(struct ether_header) + 
+		sizeof(struct iphdr) + 
+		sizeof(struct icmp) +
+		data_len;
 
-	struct icmp * icmp;
-	// TODO
+	struct ether_header * e_hdr = (struct ether_header *) frame_buf;
+	e_hdr->ether_type = htons(ETH_P_IP);
+	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
+	tmp = head;
+	for (tmp = head; tmp; tmp = tmp->ifi_next) {
+		if (strcmp(tmp->ifi_name, "eth0") == 0) {
+			memcpy(e_hdr->ether_shost, tmp->ifi_hwaddr, tmp->ifi_halen);
+			break;
+		}
+	}
+	memcpy(e_hdr->ether_dhost, prec_hw.sll_addr, prec_hw.sll_halen);
+
+	struct iphdr * ip_hdr = (struct iphdr *) (e_hdr + 1);
+	ip_hdr = make_ip_hdr(ip_hdr, sizeof(struct icmp) + data_len,
+			IP_HDR_ID, IPPROTO_ICMP, src_ip.s_addr, prec_addr.sin_addr.s_addr);
+	
+	int icmp_cnt = 0;
+	struct icmp * icmp_hdr = (struct icmp *) (ip_hdr + 1);
+
+	char * icmp_payload = (char *) (icmp_hdr + 1);
+
+	// send ping echo request
+	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), data_len);
+
+	
+SEND_ICMP:
+
+	// Message Type (8 bits): echo request
+	icmp_hdr->icmp_type = ICMP_ECHO;
+	// Message Code (8 bits): echo request
+	icmp_hdr->icmp_code = 0;
+	// Identifier (16 bits): usually pid of sending process - pick a number
+	icmp_hdr->icmp_id = htons (1000);
+	// Sequence Number (16 bits): starts at 0
+	icmp_hdr->icmp_seq = htons (icmp_cnt++);
+
+	// timestamp
+	time(&a_clock);
+	cur_time = localtime(&a_clock);
+	strcpy(icmp_payload, asctime(cur_time));
+	icmp_payload[strlen(icmp_payload)-1] = 0;
+
+	if((ret = sendto(sock_ping, frame_buf, frame_len, 0, 
+					(void *) &prec_hw, sizeof(prec_hw))) < 0) {
+		log_err("sendto error!\n");
+		return ;
+	}
+
+	signal(SIGALRM, sig_alarm);
+	alarm(1);
+
+	if(sigsetjmp(jmpbuf, 1) != 0) {
+		log_debug("1 second passed, go on pinging ...\n");
+		goto SEND_ICMP;
+	}
 }
 
 void reply_callback(void * ml, void * data, int rw) {
 	// ping reply callback
 
-	// log_debug("Received ping echo request via pg_reply!\n");
+	log_debug("Received ping echo request via pg_reply!\n");
 	struct fd * fh = data;
 	int sock_fd = fd_get_fd(fh);
+
+	//
+	int packet_len = sizeof(struct iphdr) + sizeof(struct icmp) + 100 /* data */;
+	uint8_t * buffer = malloc(packet_len);
+	int recv_size = 0;
+
+	struct sockaddr_in src_addr;
+	memset(&src_addr, 0, sizeof(src_addr));
+	socklen_t src_addr_len = sizeof(src_addr);
+
+	if((recv_size = recvfrom(sock_fd, buffer, (size_t) packet_len, 0,
+					(struct sockaddr *) &src_addr, &src_addr_len)) < 0) {
+		log_err("recvfrom error\n");
+		return ;
+	}
+
+	struct iphdr * r_hdr = (void *) buffer;
+	show_ip_hdr(r_hdr, "received");
+
+	struct icmp * icmp_hdr= (struct icmp *)(r_hdr + 1);
+
 	// TODO
 }
 
@@ -453,7 +546,7 @@ int main(int argc, const char **argv) {
 	}
 
 	// create ping reply socket, IP RAW, with ICMP protocol
-	if((sock_pg_send = socket(AF_PACKET, SOCK_RAW, ETH_P_IP)) < 0) {
+	if((sock_pg_send = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) < 0) {
 		my_err_quit("socket error");
 	}
 
@@ -461,13 +554,18 @@ int main(int argc, const char **argv) {
 
 	log_debug("mainloop gonna start!\n");
 	void * ml = mainloop_new();
+
+	void * fh_pg_send = fd_insert(ml, sock_pg_send, FD_READ, NULL, NULL);
+
 	void * fh_rt = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
-	fd_set_data(fh_rt, fh_rt);
+
+	struct bound * bd = malloc(sizeof(struct bound));
+	bd->fh1 = fh_pg_send;
+	bd->fh2 = fh_rt;
+	fd_set_data(fh_rt, bd);
 
 	void * fh_pg_reply = fd_insert(ml, sock_pg_reply, FD_READ, reply_callback, NULL);
 	fd_set_data(fh_pg_reply, fh_pg_reply);
-
-	/*void * fh_pg_send = */fd_insert(ml, sock_pg_send, FD_READ, NULL, NULL);
 
     // for source node, it should actively send
     if(source_node_flag) {
@@ -482,7 +580,7 @@ int main(int argc, const char **argv) {
         }
         i_payload = make_ip_payload(i_payload, m_addr.s_addr, MULTICAST_PORT, 0, tour_list, NULL);
         uint32_t s_addr = (tour_list->ip_addr).sin_addr.s_addr, d_addr = (tour_list->next->ip_addr).sin_addr.s_addr;
-        i_hdr = make_ip_hdr(i_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
+        i_hdr = make_ip_hdr(i_hdr, sizeof(struct ip_payload), IP_HDR_ID, IPPROTO_XIANGYU, s_addr, d_addr);
 
 		show_ip_hdr(i_hdr, "first");
 		show_ip_payload(i_payload, "i_payload");

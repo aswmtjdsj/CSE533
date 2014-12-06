@@ -8,7 +8,12 @@
 #include <time.h>
 #include <sys/time.h>
 
+#include <signal.h>
+#include <setjmp.h>
+
 #include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <net/ethernet.h>
 #include <linux/if_ether.h>
 
 #include "utils.h"
@@ -26,6 +31,7 @@
 #define MSG_MAX_LEN 50
 #define IP_P_MAX_LEN 20
 #define MAC_MAX_LEN 40
+
 /*
 #define INPUT_BUF_MAX_LEN 20
 #define DGRAM_MAX_LEN 512
