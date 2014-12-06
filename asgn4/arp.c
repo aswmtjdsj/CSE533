@@ -75,6 +75,33 @@ static inline int client_cmp(struct skip_list_head *h, const void *b) {
 }
 
 static inline void
+arp_dump(struct arp *msg) {
+	log_info("ARP packet dump:\n");
+	log_info("\thlen: %u\n", msg->hlen);
+	log_info("\tplen: %u\n", msg->plen);
+	log_info("\tptype: %04X\n", ntohs(msg->ptype));
+	log_info("\thatype: %04X\n", ntohs(msg->hatype));
+	log_info("\toper: %u\n", ntohs(msg->oper));
+
+	uint32_t saddr, taddr;
+	memcpy(msg->data+msg->hlen, &saddr, 4);
+	memcpy(msg->data+msg->hlen+2*msg->plen, &taddr, 4);
+
+	log_info("\tsource ip: %s\n", inet_ntoa((struct in_addr){saddr}));
+	log_info("\ttarget ip: %s\n", inet_ntoa((struct in_addr){taddr}));
+	int i;
+	char buf[30];
+	for (i = 0; i < msg->hlen; i++)
+		sprintf(buf+3*i, "%02X", msg->data[i]);
+	buf[3*msg->hlen-1] = 0;
+	log_info("\tsource hardware address: %s\n", buf);
+	for (i = 0; i < msg->hlen; i++)
+		sprintf(buf+3*i, "%02X", msg->data[msg->hlen+msg->plen+i]);
+	buf[3*msg->hlen-1] = 0;
+	log_info("\ttarget hardware address: %s\n", buf);
+}
+
+static inline void
 arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
 	uint8_t buf[1500];
 	struct ether_header *ehdr = (void *)buf;
@@ -115,7 +142,8 @@ arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
 	memset(lladdr.sll_addr, 0xff, ETH_ALEN);
 	memset(ehdr->ether_dhost, 0xff, ETH_ALEN);
 
-	log_info("Sending arp request\n");
+	log_info("Sending following packet\n");
+	arp_dump(msg);
 	int ret = sendto(p->fd, buf,
 	    sizeof(struct arp)+sizeof(struct ether_header),
 	    0, (void *)&lladdr, sizeof(lladdr));
@@ -201,10 +229,11 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	struct ether_header *ehdr;
 	struct arp *msg;
 
-	log_info("Received arp request\n");
+	log_info("Received arp request:\n");
 
 	ehdr = (void *)buf;
 	msg = (void *)(ehdr+1);
+	arp_dump(msg);
 
 	uint16_t ptype = ntohs(msg->ptype);
 	uint32_t addrv4, saddrv4;
@@ -290,6 +319,7 @@ void arp_reply_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	struct arp *msg = (void *)(ehdr+1);
 
 	log_info("Received arp reply\n");
+	arp_dump(msg);
 
 	if (msg->hatype != p->hatype) {
 		log_err("Received reply from a different type of network\n");
@@ -387,10 +417,17 @@ int main(int argc, const char **argv) {
 		if (strcmp(tmp->ifi_name, "eth0") == 0) {
 			log_debug("Getting local ip addresses from eth0\n");
 			struct ip_record *ir = talloc(1, struct ip_record);
-			log_info("Local ip: %s\n", sa_ntop((void *)s, &iptmp, &len));
+			log_info("Local ip: %s\n", sa_ntop((void *)s,
+			    &iptmp, &len));
 			ir->ip = s->sin_addr.s_addr;
 			p.eth0_ifidx = tmp->ifi_index;
 			skip_list_insert(&p.myip, &ir->h, &ir->ip, addr_cmp);
+			if (tmp->ifi_halen != ETH_ALEN)
+				log_info("Unsupported network device\n");
+			else {
+				memcpy(p.hwaddr, tmp->ifi_hwaddr, tmp->ifi_halen);
+				p.halen = tmp->ifi_halen;
+			}
 		}
 	}
 	free_ifi_info(head);
