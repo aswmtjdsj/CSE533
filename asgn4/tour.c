@@ -42,6 +42,17 @@ struct iphdr * make_ip_hdr(struct iphdr * hdr, uint32_t payload_len, uint16_t id
     return hdr;
 }
 
+void show_ip_hdr(struct iphdr * hdr) {
+	log_debug("ip header>\n");
+	log_debug("\tihl: %d\n", hdr->ihl);
+	log_debug("\tversion: %d\n", ntohs(hdr->version));
+	log_debug("\ttotal length: %d\n", ntohs(hdr->tot_len));
+	log_debug("\tid: %d\n", ntohs(hdr->id));
+	log_debug("\tprotocol: %d\n", hdr->protocol);
+	log_debug("\tsource address: %s\n", inet_ntoa((struct in_addr){ntohl(hdr->saddr)}));
+	log_debug("\tdestination address: %s\n", inet_ntoa((struct in_addr){ntohl(hdr->daddr)}));
+}
+
 struct ip_payload * make_ip_payload(struct ip_payload * payload,
 		uint32_t m_ip, uint32_t m_port,
 		uint8_t cur_pointer,
@@ -61,20 +72,25 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload,
          payload->ip_num = 0;
          struct tour_list_entry * temp_entry = tour_list;
          while(temp_entry != NULL) {
-             payload->ip_list[payload->ip_num++] = (temp_entry->ip_addr).sin_addr.s_addr; // already network byte order
+             payload->ip_list[payload->ip_num] = (temp_entry->ip_addr).sin_addr.s_addr; // already network byte order
              temp_entry = temp_entry->next;
+			 payload->ip_num += 1;
          }
-         payload->ip_num = htons(payload->ip_num);
+		 log_debug("ip_num: %d\n", payload->ip_num);
     } else {
         payload = prev;
-        if(ntohs(payload->cur_pt) + 1 >= ntohs(payload->ip_num)) {
-            log_err("This is the last node of tour list! No need to make new ip packet for sending!\n");
+        if(payload->cur_pt + 1 >= payload->ip_num) {
+            log_err("This is the last node of tour list! No need to make new ip packet for sending! "
+					"cur_pt: %d, ip_num: %d\n", payload->cur_pt, payload->ip_num);
             exit(EXIT_FAILURE);
         }
-        payload->cur_pt = htons(ntohs(payload->cur_pt) + 1);
+        payload->cur_pt ++;
     }
 
     return payload;
+}
+
+void show_ip_payload(struct ip_payload * payload) {
 }
 
 void rt_callback(void * ml, void * data, int rw) {
@@ -97,6 +113,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 
 	struct iphdr * r_hdr = (void *) buffer;
+	show_ip_hdr(r_hdr);
 	struct ip_payload * r_payload = (struct ip_payload *) (r_hdr + 1);
 
 	// check ID
@@ -124,10 +141,12 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	// get host name of source address
     struct hostent * src_host = NULL;
-	if((src_host = gethostbyaddr(&(src_addr.sin_addr), sizeof(struct in_addr), AF_INET)) == NULL) {
+	struct in_addr src_ip = src_addr.sin_addr;
+	src_ip.s_addr = ntohl(src_ip.s_addr);
+	if((src_host = gethostbyaddr(&src_ip, sizeof(struct in_addr), AF_INET)) == NULL) {
 		switch(h_errno) {
 			case HOST_NOT_FOUND:
-				log_err("Source host of addr %s is unknown!\n", inet_ntoa(src_addr.sin_addr));
+				log_err("Host of source address %s is unknown!\n", inet_ntoa(src_ip));
 				break;
 			case NO_ADDRESS:
 				// case NO_DATA:
@@ -149,20 +168,23 @@ void rt_callback(void * ml, void * data, int rw) {
 	// then TODO
 	
 	// if this is the end node of the tour
-	if(ntohs(r_payload->cur_pt) + 1 == ntohs(r_payload->ip_num)) {
+	if(r_payload->cur_pt + 1 == r_payload->ip_num) {
 		// TODO
 		return ;
 	}
 
 	// not the end, then resend
-	uint32_t s_addr = ntohs(r_hdr->daddr), d_addr;
-	if(s_addr != r_payload->ip_list[ntohs(r_payload->cur_pt) + 1]) {
+	uint32_t s_addr = ntohl(r_hdr->daddr), d_addr;
+	if(s_addr != r_payload->ip_list[r_payload->cur_pt + 1]) {
 		log_err("It's weird, the dst address retrieved from ip packet header "
 				"is different from the corresponding addr in ip list of ip packet payload"
 				", please check!\n");
+		log_debug("s_addr: %s, cur_pt+1: %d, ip_list[cur_pt+1]: %s\n", 
+				inet_ntoa((struct in_addr){s_addr}), 
+				r_payload->cur_pt+1, inet_ntoa((struct in_addr){r_payload->ip_list[r_payload->cur_pt + 1]}));
 		return ;
 	}
-	d_addr = r_payload->ip_list[ntohs(r_payload->cur_pt) + 2];
+	d_addr = r_payload->ip_list[r_payload->cur_pt + 2];
 	struct iphdr * s_hdr = (struct iphdr *) packet;
 	s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
 	struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
@@ -172,7 +194,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	struct sockaddr_in dst_addr;
 	memset(&dst_addr, 0, sizeof(dst_addr));
 	socklen_t addr_len = sizeof(dst_addr);
-	dst_addr.sin_addr.s_addr = s_payload->ip_list[ntohs(s_payload->cur_pt)];
+	dst_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt];
 	dst_addr.sin_family = AF_INET;
 	log_debug("gonna send tour ip packet via rt sock!\n");
 	if((n = sendto(sock_fd, packet, ntohs(s_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
@@ -320,6 +342,7 @@ int main(int argc, const char **argv) {
     }
 
 	mainloop_run(ml);
+	free(ml);
 
 ALL_DONE:
 	log_info("Gonna close ... Clearing junk ...\n");
@@ -328,6 +351,6 @@ ALL_DONE:
 		free(tour_list);
 		tour_list = temp;
 	}
-	free(ml);
+
 	return code_flag;
 }
