@@ -84,7 +84,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	int sock_fd = fd_get_fd(fh);
 
 	int packet_len = sizeof(struct iphdr) + sizeof(struct ip_payload);
-	uint8_t * buffer = malloc(packet_len);
+	uint8_t * buffer = malloc(packet_len), * packet = malloc(packet_len);
 	int recv_size = 0;
 	struct sockaddr_in src_addr;
 	memset(&src_addr, 0, sizeof(src_addr));
@@ -92,13 +92,95 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	if((recv_size = recvfrom(sock_fd, buffer, (size_t) packet_len, 0,
 					(struct sockaddr *) &src_addr, &src_addr_len)) < 0) {
-		my_err_quit("recvfrom error");
+		log_err("recvfrom error\n");
+		return ;
 	}
 
 	struct iphdr * r_hdr = (void *) buffer;
 	struct ip_payload * r_payload = (struct ip_payload *) (r_hdr + 1);
 
-	// resend
+	// check ID
+	if(ntohs(r_hdr->id) != IP_HDR_ID) {
+		log_warn("Received IP Header, with a wrong ID field %d, correct ID should be %d!"
+				" Packet gonna be dropped!\n", ntohs(r_hdr->id), IP_HDR_ID);
+		return ;
+	} else {
+		log_info("Packet valid, with ID field %d!\n", ntohs(r_hdr->id));
+	}
+
+	if(r_hdr->saddr != src_addr.sin_addr.s_addr) {
+		log_err("It's weird, the src address acquired by recvfrom and the saddr in ip header"
+				"are different! Something strange happend, please check!\n");
+		return ;
+	}
+
+	// timestamp
+    time_t a_clock;
+    char time_st[MSG_MAX_LEN];
+	time(&a_clock);
+	struct tm * cur_time = localtime(&a_clock);
+	strcpy(time_st, asctime(cur_time));
+	time_st[strlen(time_st)-1] = 0;
+
+	// get host name of source address
+    struct hostent * src_host = NULL;
+	if((src_host = gethostbyaddr(&(src_addr.sin_addr), sizeof(struct in_addr), AF_INET)) == NULL) {
+		switch(h_errno) {
+			case HOST_NOT_FOUND:
+				log_err("Source host of addr %s is unknown!\n", inet_ntoa(src_addr.sin_addr));
+				break;
+			case NO_ADDRESS:
+				// case NO_DATA:
+				log_err("The requested name is valid but does not have an IP address\n");
+				break;
+			case NO_RECOVERY:
+				log_err("A nonrecoverable name server error occurred!\n");
+				break;
+			case TRY_AGAIN:
+				log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
+				break;
+		}
+		return ;
+	}
+
+	log_info("<%s> received source routing packet from <%s>.\n", time_st, src_host->h_name);
+
+	// if this is the first time this node received a IP packet
+	// then TODO
+	
+	// if this is the end node of the tour
+	if(ntohs(r_payload->cur_pt) + 1 == ntohs(r_payload->ip_num)) {
+		// TODO
+		return ;
+	}
+
+	// not the end, then resend
+	uint32_t s_addr = ntohs(r_hdr->daddr), d_addr;
+	if(s_addr != r_payload->ip_list[ntohs(r_payload->cur_pt) + 1]) {
+		log_err("It's weird, the dst address retrieved from ip packet header "
+				"is different from the corresponding addr in ip list of ip packet payload"
+				", please check!\n");
+		return ;
+	}
+	d_addr = r_payload->ip_list[ntohs(r_payload->cur_pt) + 2];
+	struct iphdr * s_hdr = (struct iphdr *) packet;
+	s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
+	struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
+	s_payload = make_ip_payload(s_payload, 0, 0, 0, NULL, r_payload);
+
+	int n = 0;
+	struct sockaddr_in dst_addr;
+	memset(&dst_addr, 0, sizeof(dst_addr));
+	socklen_t addr_len = sizeof(dst_addr);
+	dst_addr.sin_addr.s_addr = s_payload->ip_list[ntohs(s_payload->cur_pt)];
+	dst_addr.sin_family = AF_INET;
+	log_debug("gonna send tour ip packet via rt sock!\n");
+	if((n = sendto(sock_fd, packet, ntohs(s_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
+		my_err_quit("sendto error");
+	}
+
+	// init ping 
+	// TODO
 }
 
 int main(int argc, const char **argv) {

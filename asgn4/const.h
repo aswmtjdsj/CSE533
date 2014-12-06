@@ -23,9 +23,9 @@
 #define MULTICAST_IP "224.0.0.2"
 #define MULTICAST_PORT 17828
 #define ID "syuxuan"
+#define MSG_MAX_LEN 50
 /*
 #define INPUT_BUF_MAX_LEN 20
-#define MSG_MAX_LEN 50
 #define IP_P_MAX_LEN 20
 #define DGRAM_MAX_LEN 512
 #define ODR_MSG_MAX_LEN 1024
