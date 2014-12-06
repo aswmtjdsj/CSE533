@@ -114,7 +114,7 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload,
          }
 		 log_debug("ip_num: %d\n", payload->ip_num);
     } else {
-        payload = prev;
+        memcpy(payload, prev, sizeof(struct ip_payload));
         if(payload->cur_pt + 1 >= payload->ip_num) {
             log_err("This is the last node of tour list! No need to make new ip packet for sending! "
 					"cur_pt: %d, ip_num: %d\n", payload->cur_pt, payload->ip_num);
@@ -149,7 +149,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	int sock_fd = fd_get_fd(fh);
 
 	int packet_len = sizeof(struct iphdr) + sizeof(struct ip_payload);
-	uint8_t * buffer = malloc(packet_len), * packet = malloc(packet_len);
+	uint8_t * buffer = malloc(packet_len);
 	int recv_size = 0;
 	struct sockaddr_in src_addr;
 	memset(&src_addr, 0, sizeof(src_addr));
@@ -220,52 +220,53 @@ void rt_callback(void * ml, void * data, int rw) {
 	log_info("First time!\n");
 	
 	// if this is the end node of the tour
-	if(r_payload->cur_pt + 1 >= r_payload->ip_num) {
+	if(r_payload->cur_pt + 1 >= r_payload->ip_num - 1) {
 		// TODO
 		log_info("End of the tour list!\n");
-		return ;
-	}
 
-	// not the end, then resend
-	uint32_t s_addr = r_hdr->daddr, d_addr;
-	if(s_addr != r_payload->ip_list[r_payload->cur_pt + 1]) {
-		log_err("It's weird, the dst address retrieved from ip packet header "
-				"is different from the corresponding addr in ip list of ip packet payload"
-				", please check!\n");
+	} else {
+		// not the end, then resend
+		uint32_t s_addr = r_hdr->daddr, d_addr;
+		if(s_addr != r_payload->ip_list[r_payload->cur_pt + 1]) {
+			log_err("It's weird, the dst address retrieved from ip packet header "
+					"is different from the corresponding addr in ip list of ip packet payload"
+					", please check!\n");
 
-		char str_s[IP_P_MAX_LEN], str_d[IP_P_MAX_LEN];
-		strcpy(str_s, inet_ntoa((struct in_addr){s_addr}));
-		strcpy(str_d, inet_ntoa((struct in_addr){(r_payload->ip_list[r_payload->cur_pt + 1])}));
-		log_debug("s_addr: %s, cur_pt+1: %d, ip_list[cur_pt+1]: %s\n", 
-				str_s, r_payload->cur_pt+1, str_d);
-		return ;
-	}
-	// prev source, prev dest | cur source, cur dst
-	// cur_pt, cur_pt + 1, cur_pt + 2
-	d_addr = r_payload->ip_list[r_payload->cur_pt + 2];
+			char str_s[IP_P_MAX_LEN], str_d[IP_P_MAX_LEN];
+			strcpy(str_s, inet_ntoa((struct in_addr){s_addr}));
+			strcpy(str_d, inet_ntoa((struct in_addr){(r_payload->ip_list[r_payload->cur_pt + 1])}));
+			log_debug("s_addr: %s, cur_pt+1: %d, ip_list[cur_pt+1]: %s\n", 
+					str_s, r_payload->cur_pt+1, str_d);
+			return ;
+		}
+		// prev source, prev dest | cur source, cur dst
+		// cur_pt, cur_pt + 1, cur_pt + 2
+		d_addr = r_payload->ip_list[r_payload->cur_pt + 2];
 
-	struct iphdr * s_hdr = (struct iphdr *) packet;
-	s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
-	show_ip_hdr(s_hdr, "sending");
-	struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
-	s_payload = make_ip_payload(s_payload, 0, 0, 0, NULL, r_payload);
-	// cur_pt has incremented
+		uint8_t * packet = malloc(packet_len);
+		struct iphdr * s_hdr = (struct iphdr *) packet;
+		s_hdr = make_ip_hdr(s_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
+		show_ip_hdr(s_hdr, "sending");
+		struct ip_payload * s_payload = (struct ip_payload *)(s_hdr + 1);
+		s_payload = make_ip_payload(s_payload, 0, 0, 0, NULL, r_payload);
+		// cur_pt has incremented
 
-	int n = 0;
-	struct sockaddr_in dst_addr;
-	memset(&dst_addr, 0, sizeof(dst_addr));
-	socklen_t addr_len = sizeof(dst_addr);
-	dst_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt + 1];
-	dst_addr.sin_family = AF_INET;
-	log_debug("gonna send tour ip packet via rt sock to host <?>!\n"); // TODO
-	if((n = sendto(sock_fd, packet, ntohs(s_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
-		my_err_quit("sendto error");
+		int n = 0;
+		struct sockaddr_in dst_addr;
+		memset(&dst_addr, 0, sizeof(dst_addr));
+		socklen_t addr_len = sizeof(dst_addr);
+		dst_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt + 1];
+		dst_addr.sin_family = AF_INET;
+		log_debug("gonna send tour ip packet via rt sock to host <?>!\n"); // TODO
+		if((n = sendto(sock_fd, packet, ntohs(s_hdr->tot_len), 0, (struct sockaddr *) &dst_addr, addr_len)) < 0) {
+			my_err_quit("sendto error");
+		}
 	}
 
 	struct sockaddr_in prec_addr;
 	memset(&prec_addr, 0, sizeof(prec_addr));
-	addr_len = sizeof(prec_addr);
-	prec_addr.sin_addr.s_addr = s_payload->ip_list[s_payload->cur_pt - 1];
+	socklen_t addr_len = sizeof(prec_addr);
+	prec_addr.sin_addr.s_addr = r_payload->ip_list[r_payload->cur_pt]; // for contents in r_payload has been changed
 	prec_addr.sin_family = AF_INET;
 
 	// detect pinging initiated or not
@@ -337,7 +338,7 @@ void rt_callback(void * ml, void * data, int rw) {
 void reply_callback(void * ml, void * data, int rw) {
 	// ping reply callback
 
-	log_debug("Received ping echo request via pg_reply!\n");
+	// log_debug("Received ping echo request via pg_reply!\n");
 	struct fd * fh = data;
 	int sock_fd = fd_get_fd(fh);
 	// TODO
