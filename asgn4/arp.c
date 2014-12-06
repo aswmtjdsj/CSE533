@@ -187,6 +187,19 @@ void areq_callback(void *ml, void *data, int rw) {
 			    &fd, client_cmp);
 			ce->client_count++;
 			return;
+		} else {
+			log_info("Address exists in cache, replying...\n");
+			struct hwaddr reply;
+			reply.sll_ifindex = htonl(ce->ifindex);
+			reply.sll_halen = ETH_ALEN;
+			memcpy(reply.sll_addr, ce->hwaddr, ETH_ALEN);
+			reply.sll_hatype = htons(ARPHRD_ETHER);
+
+			int ret = send(fd, &reply, sizeof(reply), 0);
+			if (ret < 0)
+				log_err("Send areq reply failed %s\n",
+				    strerror(errno));
+			close(fd);
 		}
 	}
 
@@ -216,6 +229,7 @@ void send_areq_reply(struct cache_entry *ce, struct arp_protocol *p) {
 		if (ret < 0)
 			log_err("Send areq reply failed %s\n",
 			    strerror(errno));
+		close(fd);
 		skip_list_delete(&c->h);
 		fd_remove(c->fh);
 		free(c);
