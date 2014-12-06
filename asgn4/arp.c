@@ -46,7 +46,7 @@ struct cache_entry {
 };
 
 struct arp_protocol {
-	int fd, areq_fd, raw_fd;
+	int fd, areq_fd;
 	uint16_t hatype;
 	uint8_t halen;
 	uint8_t hwaddr[8];
@@ -74,9 +74,9 @@ static inline int client_cmp(struct skip_list_head *h, const void *b) {
 	return fd_get_fd(a->fh)-(*bb);
 }
 
-void areq_request(struct client *nc, struct sockaddr *addr,
-		  struct arp_protocol *p) {
-	uint8_t buf[1060];
+static inline void
+arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
+	uint8_t buf[1500];
 	struct ether_header *ehdr = (void *)buf;
 	struct arp *msg = (void *)(ehdr+1);
 	struct skip_list_head *tmp = p->myip.next[0];
@@ -106,10 +106,53 @@ void areq_request(struct client *nc, struct sockaddr *addr,
 			return;
 	}
 
-	uint32_t addrv4 = sin->sin_addr.s_addr;
-	struct skip_list_head *res = skip_list_find_eq(&p->cache,
-	    &addrv4, cache_cmp);
-	if (res) {
+	struct sockaddr_ll lladdr;
+	lladdr.sll_ifindex = p->eth0_ifidx;
+	lladdr.sll_protocol = 0;
+	lladdr.sll_halen = ETH_ALEN;
+	lladdr.sll_family = AF_PACKET;
+	lladdr.sll_hatype = lladdr.sll_pkttype = 0;
+	memset(lladdr.sll_addr, 0xff, ETH_ALEN);
+	memset(ehdr->ether_dhost, 0xff, ETH_ALEN);
+
+	log_info("Sending arp request\n");
+	int ret = sendto(p->fd, buf,
+	    sizeof(struct arp)+sizeof(struct ether_header),
+	    0, (void *)&lladdr, sizeof(lladdr));
+	if (ret)
+		log_warn("sendto via interface %d failed, %s\n",
+		    p->eth0_ifidx, strerror(errno));
+	return;
+}
+
+void areq_callback(void *ml, void *data, int rw) {
+	struct client *nc = data;
+	uint32_t ip;
+	struct sockaddr caddr;
+	struct arp_protocol *p = nc->p;
+	socklen_t len;
+	int fd = fd_get_fd(nc->fh);
+	int ret = recvfrom(fd, &ip, 4, 0, &caddr, &len);
+	if (ret <= 0) {
+		if (nc->owner) {
+			skip_list_delete(&nc->h);
+			nc->owner->client_count--;
+		}
+		close(fd);
+		free(nc);
+	}
+
+	struct skip_list_head *res =
+	    skip_list_find_eq(&p->cache, &ip, cache_cmp);
+	struct cache_entry *ce = skip_list_entry(res, struct cache_entry, h);
+	if (!res) {
+		ce = talloc(1, struct cache_entry);
+		skip_list_init_head(&ce->clients);
+		ce->client_count = 1;
+		ce->incomplete = true;
+		ce->ip = ip;
+		skip_list_insert(&p->cache, &ce->h, &ip, cache_cmp);
+	} else {
 		struct cache_entry *ce = skip_list_entry(res,
 		    struct cache_entry, h);
 		if (ce->incomplete) {
@@ -121,22 +164,13 @@ void areq_request(struct client *nc, struct sockaddr *addr,
 		}
 	}
 
-	struct sockaddr_ll lladdr;
-	lladdr.sll_ifindex = p->eth0_ifidx;
-	lladdr.sll_protocol = 0;
-	lladdr.sll_halen = ETH_ALEN;
-	lladdr.sll_family = AF_PACKET;
-	lladdr.sll_hatype = lladdr.sll_pkttype = 0;
-	memset(lladdr.sll_addr, 0xff, ETH_ALEN);
-	memset(ehdr->ether_dhost, 0xff, ETH_ALEN);
+	skip_list_insert(&ce->clients, &nc->h, &fd, client_cmp);
+	nc->owner = ce;
 
-	int ret = sendto(p->fd, buf,
-	    sizeof(struct arp)+sizeof(struct ether_header),
-	    0, (void *)&lladdr, sizeof(lladdr));
-	if (ret)
-		log_warn("sendto via interface %d failed, %s\n",
-		    p->eth0_ifidx, strerror(errno));
-	return;
+	struct sockaddr_in req_addr;
+	req_addr.sin_addr.s_addr = ip;
+	req_addr.sin_family = AF_INET;
+	arp_send_request((void *)&req_addr, p);
 }
 
 void send_areq_reply(struct cache_entry *ce, struct arp_protocol *p) {
@@ -166,6 +200,8 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 		      struct arp_protocol *p) {
 	struct ether_header *ehdr;
 	struct arp *msg;
+
+	log_info("Received arp request\n");
 
 	ehdr = (void *)buf;
 	msg = (void *)(ehdr+1);
@@ -247,6 +283,9 @@ void arp_reply_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 			struct arp_protocol *p) {
 	struct ether_header *ehdr = buf;
 	struct arp *msg = (void *)(ehdr+1);
+
+	log_info("Received arp reply\n");
+
 	if (msg->hatype != p->hatype) {
 		log_err("Received reply from a different type of network\n");
 		return;
@@ -295,43 +334,6 @@ void arp_reply_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	memcpy(ce->hwaddr, msg->data, ETH_ALEN);
 	send_areq_reply(ce, p);
 }
-void areq_callback(void *ml, void *data, int rw) {
-	struct client *nc = data;
-	uint32_t ip;
-	struct sockaddr caddr;
-	struct arp_protocol *p = nc->p;
-	socklen_t len;
-	int fd = fd_get_fd(nc->fh);
-	int ret = recvfrom(fd, &ip, 4, 0, &caddr, &len);
-	if (ret <= 0) {
-		if (nc->owner) {
-			skip_list_delete(&nc->h);
-			nc->owner->client_count--;
-		}
-		close(fd);
-		free(nc);
-	}
-
-	struct skip_list_head *res =
-	    skip_list_find_eq(&p->cache, &ip, cache_cmp);
-	struct cache_entry *ce = skip_list_entry(res, struct cache_entry, h);
-	if (!res) {
-		ce = talloc(1, struct cache_entry);
-		skip_list_init_head(&ce->clients);
-		ce->client_count = 1;
-		ce->incomplete = true;
-		ce->ip = ip;
-		skip_list_insert(&p->cache, &ce->h, &ip, cache_cmp);
-	}
-
-	skip_list_insert(&ce->clients, &nc->h, &fd, client_cmp);
-	nc->owner = ce;
-
-	struct sockaddr_in req_addr;
-	req_addr.sin_addr.s_addr = ip;
-	req_addr.sin_family = AF_INET;
-	areq_request(nc, (void *)&req_addr, p);
-}
 void listen_cb(void *ml, void *data, int rw) {
 	struct arp_protocol *p = data;
 	struct sockaddr caddr;
@@ -351,7 +353,7 @@ void arp_callback(void *ml, void *data, int rw) {
 	struct arp *msg = (void *)(ehdr+1);
 	socklen_t len;
 
-	int ret = recvfrom(p->raw_fd, buf, sizeof(buf), 0,
+	int ret = recvfrom(p->fd, buf, sizeof(buf), 0,
 	    (void *)&lladdr, &len);
 	if (ret < 0) {
 		log_err("Failed to recv from raw socket\n");
@@ -415,8 +417,8 @@ int main(int argc, const char **argv) {
 	p.ml = mainloop_new();
 	fd_insert(p.ml, areq_sock, FD_READ, listen_cb, &p);
 
-	p.raw_fd = socket(AF_PACKET, SOCK_RAW, htons(ARP_MAGIC));
-	fd_insert(p.ml, p.raw_fd, FD_READ, arp_callback, &p);
+	p.fd = socket(AF_PACKET, SOCK_RAW, htons(ARP_MAGIC));
+	fd_insert(p.ml, p.fd, FD_READ, arp_callback, &p);
 
 	mainloop_run(p.ml);
 	return 0;
