@@ -7,6 +7,10 @@ int areq(struct sockaddr *addr, socklen_t len, struct hwaddr *rep) {
 		log_err("Unsupported address family\n");
 		return -2;
 	}
+	if (len != sizeof(struct sockaddr_in)) {
+		log_err("Invalid size\n");
+		return -3;
+	}
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 
 	struct sockaddr_un addr_un;
@@ -35,5 +39,6 @@ int areq(struct sockaddr *addr, socklen_t len, struct hwaddr *rep) {
 		    strerror(errno));
 		return -1;
 	}
+	close(fd);
 	return 0;
 }
