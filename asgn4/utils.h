@@ -1,15 +1,11 @@
-/* Our own header for the programs that need interface configuration info.
-   Include this file, instead of "unp.h". */
-
-#ifndef __UTILS_H__
-#define __UTILS_H__
+#pragma once
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
-#include <net/if.h>
+#include <linux/if.h>
 #include "log.h"
 
 #define CASSERT(expr, str) typedef struct {int: -!!(expr); } assert_failed_##str
@@ -86,6 +82,5 @@ static inline void dump_lladdr(struct sockaddr_ll *addr){
 const char *sa_ntop(struct sockaddr *, char **, size_t *);
 
 void my_err_quit(const char * /* error info */);
-#endif
 void free_ifi_info(struct ifi_info *ifihead);
 struct ifi_info * get_ifi_info(int family, int doaliases);

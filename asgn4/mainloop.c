@@ -10,21 +10,20 @@
 struct mainloop {
 	struct timer *timers;
 	struct fd *fds;
-	int maxfd;
 };
 struct timer {
 	struct timeval tv;
 	struct timeval realtv;
 	void *data;
 	timer_cb cb;
-	struct timer *next;
+	struct timer *next, **prev;
 };
 struct fd {
 	int fd;
 	void *data;
 	fd_cb cb;
 	int rw;
-	struct fd *next;
+	struct fd *next, **prev;
 };
 
 #define	TIMEVAL_TO_TIMESPEC(tv, ts) {					\
@@ -89,9 +88,11 @@ timer_insert(void *loop, struct timeval *tv, timer_cb cb, void *data) {
 	struct timer *nt = malloc(sizeof(struct timer));
 	nt->tv = ttv;
 	nt->next = tmp;
+	tmp->prev = &nt->next;
 	nt->cb = cb;
 	nt->data = data;
 	nt->realtv = *tv;
+	nt->prev = nextp;
 	*nextp = nt;
 	if (tmp)
 		timer_substract(&tmp->tv, &ttv);
@@ -105,54 +106,25 @@ void *fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
 	nfd->cb = cb;
 	nfd->rw = rw;
 	nfd->next = ml->fds;
+	ml->fds->prev = &nfd->next;
+	nfd->prev = &ml->fds;
 	ml->fds = nfd;
-	if (fd > ml->maxfd)
-		ml->maxfd = fd;
 	return nfd;
 }
 
-static void
-recalc_maxfd(struct mainloop *ml) {
-	struct fd *tmp = ml->fds;
-	ml->maxfd = -1;
-	while(tmp) {
-		if (tmp->fd > ml->maxfd)
-			ml->maxfd = tmp->fd;
-		tmp = tmp->next;
-	}
+void fd_remove(void *handle) {
+	struct fd *tfd = handle;
+	*tfd->prev = tfd->next;
+	free(tfd);
 }
 
-void fd_remove(void *loop, void *handle) {
-	struct mainloop *ml = loop;
-	struct fd **nextp = &ml->fds;
-	struct fd *tfd = ml->fds;
-	while(tfd) {
-		if (tfd == handle) {
-			*nextp = tfd->next;
-			free(tfd);
-			recalc_maxfd(ml);
-			return;
-		}
-		nextp = &tfd->next;
-		tfd = tfd->next;
-	}
-}
-
-void timer_remove(void *loop, void *handle) {
-	struct mainloop *ml = loop;
-	struct timer **nextp = &ml->timers;
-	struct timer *tt = ml->timers;
-	while(tt) {
-		if (tt == handle) {
-			*nextp = tt->next;
-			if (tt->next)
-				timer_add(&tt->next->tv, &tt->tv);
-			free(tt);
-			return;
-		}
-		nextp = &tt->next;
-		tt = tt->next;
-	}
+void timer_remove(void *handle) {
+	struct timer *tt = handle;
+	*tt->prev = tt->next;
+	if (tt->next)
+		timer_add(&tt->next->tv, &tt->tv);
+	free(tt);
+	return;
 }
 
 static
@@ -204,11 +176,14 @@ void mainloop_run(void *data) {
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
 		struct fd *tfd = ml->fds;
+		int maxfd = -1;
 		while(tfd) {
 			if (tfd->rw & 1)
 				FD_SET(tfd->fd, &rfds);
 			if (tfd->rw & 2)
 				FD_SET(tfd->fd, &wfds);
+			if (tfd->fd > maxfd)
+				maxfd = tfd->fd;
 			tfd = tfd->next;
 		}
 
@@ -223,7 +198,7 @@ void mainloop_run(void *data) {
 			timer_substract(&nto, &nowl);
 		}
 
-		int ret = select(ml->maxfd+1, &rfds, &wfds, NULL, ntop);
+		int ret = select(maxfd+1, &rfds, &wfds, NULL, ntop);
 
 		if (ml->timers) {
 			clock_gettime(CLOCK_MONOTONIC, &nowh);
@@ -251,7 +226,6 @@ void *mainloop_new(void){
 	struct mainloop *ml = malloc(sizeof(struct mainloop));
 	ml->fds = NULL;
 	ml->timers = NULL;
-	ml->maxfd = -1;
 	return ml;
 }
 

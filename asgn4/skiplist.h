@@ -26,6 +26,12 @@ struct skip_list_head {
 	     (ptr) = skip_list_entry(tmp, type, member), (tmp); \
 	     (tmp) = (tmp)->next[0])
 
+#define skip_list_foreach_safe(head, tmp, tmp2, ptr, type, member) \
+	for ((tmp) = (head)->next[0]; \
+	     (ptr) = skip_list_entry(tmp, type, member), \
+	     (tmp2) = (tmp)->next[0], \
+	     (tmp); (tmp) = (tmp2))
+
 #define skip_list_empty(ptr) \
 	((ptr)->next == NULL || (ptr)->next[0] == NULL)
 

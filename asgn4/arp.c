@@ -2,11 +2,15 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <sys/un.h>
 #include <net/ethernet.h>
 #include <stdbool.h>
+#include <linux/if_arp.h>
 #include "const.h"
 #include "skiplist.h"
 #include "arp_protocol.h"
+#include "arp_client.h"
+#include "mainloop.h"
 
 struct ifinfo {
 	int halen;
@@ -24,8 +28,10 @@ struct ip_record {
 };
 
 struct client {
-	int fd;
-	struct client *next;
+	void *fh;
+	struct arp_protocol *p;
+	struct cache_entry *owner;
+	struct skip_list_head h;
 };
 
 struct cache_entry {
@@ -33,18 +39,19 @@ struct cache_entry {
 	uint8_t hwaddr[8];
 	uint32_t ifindex;
 	bool incomplete;
+	uint32_t pending_id;
 	uint32_t client_count;
-	struct client *c;
+	struct skip_list_head clients;
 	struct skip_list_head h;
 };
 
 struct arp_protocol {
-	int fd;
+	int fd, areq_fd;
 	uint16_t hatype;
 	uint8_t halen;
 	uint8_t hwaddr[8];
-	int max_ifidx;
-	struct ifinfo *ifi_table;
+	int eth0_ifidx;
+	void *ml;
 	struct skip_list_head myip;
 	struct skip_list_head cache;
 };
@@ -61,7 +68,14 @@ static inline int cache_cmp(struct skip_list_head *h, const void *b) {
 	return a->ip-(*bb);
 }
 
-int arp_request(struct sockaddr *addr, struct arp_protocol *p) {
+static inline int client_cmp(struct skip_list_head *h, const void *b) {
+	struct client *a = skip_list_entry(h, struct client, h);
+	const int *bb = b;
+	return fd_get_fd(a->fh)-(*bb);
+}
+
+void areq_request(struct client *nc, struct sockaddr *addr,
+		  struct arp_protocol *p) {
 	uint8_t buf[1060];
 	struct ether_header *ehdr = (void *)buf;
 	struct arp *msg = (void *)(ehdr+1);
@@ -89,33 +103,64 @@ int arp_request(struct sockaddr *addr, struct arp_protocol *p) {
 		default:
 			log_err("Unsupported address family %u\n",
 				addr->sa_family);
-			return 1;
+			return;
+	}
+
+	uint32_t addrv4 = sin->sin_addr.s_addr;
+	struct skip_list_head *res = skip_list_find_eq(&p->cache,
+	    &addrv4, cache_cmp);
+	if (res) {
+		struct cache_entry *ce = skip_list_entry(res,
+		    struct cache_entry, h);
+		if (ce->incomplete) {
+			int fd = fd_get_fd(nc->fh);
+			skip_list_insert(&ce->clients, &nc->h,
+			    &fd, client_cmp);
+			ce->client_count++;
+			return;
+		}
 	}
 
 	struct sockaddr_ll lladdr;
 	int i;
-	for (i = 0; i < p->max_ifidx; i++) {
-		if (!p->ifi_table[i].flags & IFF_UP)
-			continue;
-		lladdr.sll_ifindex = i;
-		lladdr.sll_protocol = 0;
-		lladdr.sll_halen = ETH_ALEN;
-		lladdr.sll_family = AF_PACKET;
-		lladdr.sll_hatype = lladdr.sll_pkttype = 0;
-		memset(lladdr.sll_addr, 0xff, ETH_ALEN);
-		memset(ehdr->ether_dhost, 0xff, ETH_ALEN);
+	lladdr.sll_ifindex = p->eth0_ifidx;
+	lladdr.sll_protocol = 0;
+	lladdr.sll_halen = ETH_ALEN;
+	lladdr.sll_family = AF_PACKET;
+	lladdr.sll_hatype = lladdr.sll_pkttype = 0;
+	memset(lladdr.sll_addr, 0xff, ETH_ALEN);
+	memset(ehdr->ether_dhost, 0xff, ETH_ALEN);
 
-		int ret = sendto(p->fd, buf,
-		    sizeof(struct arp)+sizeof(struct ether_header),
-		    0, (void *)&lladdr, sizeof(lladdr));
-		if (ret)
-			log_warn("sendto via interface %d failed, %s\n",
-			    i, strerror(errno));
-	}
-	return 0;
+	int ret = sendto(p->fd, buf,
+	    sizeof(struct arp)+sizeof(struct ether_header),
+	    0, (void *)&lladdr, sizeof(lladdr));
+	if (ret)
+		log_warn("sendto via interface %d failed, %s\n",
+		    i, strerror(errno));
+	return;
 }
 
 void send_areq_reply(struct cache_entry *ce, struct arp_protocol *p) {
+	assert(!ce->incomplete);
+	struct hwaddr reply;
+	reply.sll_ifindex = htonl(ce->ifindex);
+	reply.sll_halen = ETH_ALEN;
+	memcpy(reply.sll_addr, ce->hwaddr, ETH_ALEN);
+	reply.sll_hatype = htons(ARPHRD_ETHER);
+	struct skip_list_head *tmp, *tmp2;
+	struct client *c;
+	ce->client_count = 0;
+	skip_list_foreach_safe(&ce->clients, tmp, tmp2, c,
+	    struct client, h) {
+		int fd = fd_get_fd(c->fh);
+		int ret = send(fd, &reply, sizeof(reply), 0);
+		if (ret)
+			log_err("Send areq reply failed %s\n",
+			    strerror(errno));
+		skip_list_delete(&c->h);
+		fd_remove(c->fh);
+		free(c);
+	}
 }
 
 void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
@@ -189,7 +234,7 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 			struct cache_entry *ce = talloc(1, struct cache_entry);
 			ce->ifindex = addr->sll_ifindex;
 			ce->incomplete = false;
-			ce->c = NULL;
+			skip_list_init_head(&ce->clients);
 			ce->client_count = 0;
 			ce->ip = addrv4;
 			memcpy(ce->hwaddr, msg->data, ETH_ALEN);
@@ -200,9 +245,148 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 
 void arp_reply_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 			struct arp_protocol *p) {
+	struct ether_header *ehdr = buf;
+	struct arp *msg = (void *)(ehdr+1);
+	if (msg->hatype != p->hatype) {
+		log_err("Received reply from a different type of network\n");
+		return;
+	}
+	if (msg->ptype != ETHERTYPE_IP) {
+		log_err("Received reply for unsupported protocol\n");
+		return;
+	}
+	if (msg->plen != 4) {
+		log_err("Wrong protocol address length\n");
+		return;
+	}
+	if (msg->hlen != ETH_ALEN) {
+		log_err("Wrong hardware address length\n");
+		return;
+	}
+	uint32_t addrv4, daddrv4;
+	memcpy(&addrv4, msg->data+msg->hlen, 4);
+	memcpy(&daddrv4, msg->data+2*msg->hlen+msg->plen, 4);
 
+	struct skip_list_head *res = skip_list_find_eq(&p->myip,
+	    &daddrv4, addr_cmp);
+	if (!res) {
+		log_err("Destination IP address doesn't exist at local\n");
+		return;
+	}
+	if (memcmp(msg->data+msg->hlen+msg->plen, p->hwaddr, ETH_ALEN) != 0) {
+		log_err("Destination hardware address doesn't match\n");
+		return;
+	}
 
+	res = skip_list_find_eq(&p->cache, &addrv4, cache_cmp);
+	if (!res) {
+		log_err("Cache entry doesn't exist, either invalid packet, or"
+		    "the client requested it has died. Discarding...\n");
+		return;
+	}
+
+	struct cache_entry *ce = skip_list_entry(res, struct cache_entry, h);
+	if (!ce->incomplete) {
+		log_err("Duplicated replies received, dicarding...\n");
+		return;
+	}
+	ce->incomplete = false;
+	ce->ifindex = addr->sll_ifindex;
+	memcpy(ce->hwaddr, msg->data, ETH_ALEN);
+	send_areq_reply(ce, p);
 }
+void areq_callback(void *ml, void *data, int rw) {
+	struct client *nc = data;
+	uint32_t ip;
+	struct sockaddr caddr;
+	struct arp_protocol *p = nc->p;
+	socklen_t len;
+	int fd = fd_get_fd(nc->fh);
+	int ret = recvfrom(fd, &ip, 4, 0, &caddr, &len);
+	if (ret <= 0) {
+		if (nc->owner) {
+			skip_list_delete(&nc->h);
+			nc->owner->client_count--;
+		}
+		close(fd);
+		free(nc);
+	}
+
+	struct skip_list_head *res =
+	    skip_list_find_eq(&p->cache, &ip, cache_cmp);
+	struct cache_entry *ce = skip_list_entry(res, struct cache_entry, h);
+	if (!res) {
+		ce = talloc(1, struct cache_entry);
+		skip_list_init_head(&ce->clients);
+		ce->client_count = 1;
+		ce->incomplete = true;
+		ce->ip = ip;
+		skip_list_insert(&p->cache, &ce->h, &ip, cache_cmp);
+	}
+
+	skip_list_insert(&ce->clients, &nc->h, &fd, client_cmp);
+	nc->owner = ce;
+}
+void listen_cb(void *ml, void *data, int rw) {
+	struct arp_protocol *p = data;
+	struct sockaddr caddr;
+	socklen_t len = sizeof(caddr);
+	int fd = accept(p->areq_fd, &caddr, &len);
+
+	struct client *nc = talloc(1, struct client);
+	nc->fh = fd_insert(ml, fd, FD_READ, areq_callback, nc);
+	nc->owner = NULL;
+	nc->p = p;
+}
+static struct arp_protocol p;
 int main(int argc, const char **argv) {
+	skip_list_init_head(&p.myip);
+	skip_list_init_head(&p.cache);
+	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
+	tmp = head;
+	for (tmp = head; tmp; tmp = tmp->ifi_next) {
+		struct sockaddr_in *s = (struct sockaddr_in *)
+		    tmp->ifi_addr;
+		if (strcmp(tmp->ifi_name, "eth0") == 0) {
+			log_debug("Getting local ip addresses from eth0\n");
+			struct ip_record *ir = talloc(1, struct ip_record);
+			ir->ip = s->sin_addr.s_addr;
+			p.eth0_ifidx = tmp->ifi_index;
+			skip_list_insert(&p.myip, &ir->h, &ir->ip, addr_cmp);
+		}
+	}
+	free_ifi_info(head);
+
+	struct sockaddr_un addr_un;
+	addr_un.sun_family = AF_UNIX;
+	memset(addr_un.sun_path, 0, sizeof(addr_un.sun_path));
+	strcpy(addr_un.sun_path+1, "arp_" ID);
+
+	int areq_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (areq_sock < 0) {
+		log_err("Failed to create socket %s\n",
+		    strerror(errno));
+		return 1;
+	}
+
+	int ret = bind(areq_sock, (void *)&addr_un, sizeof(addr_un));
+	if (ret < 0) {
+		log_err("Failed to bind %s\n",
+		    strerror(errno));
+		return 1;
+	}
+
+	ret = listen(areq_sock, 0);
+	if (ret < 0) {
+		log_err("Failed to listen %s\n",
+		    strerror(errno));
+		return 1;
+	}
+	p.areq_fd = areq_sock;
+
+	p.ml = mainloop_new();
+	fd_insert(p.ml, areq_sock, FD_READ, listen_cb, &p);
+
+	mainloop_run(p.ml);
 	return 0;
 }
