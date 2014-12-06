@@ -122,7 +122,6 @@ void areq_request(struct client *nc, struct sockaddr *addr,
 	}
 
 	struct sockaddr_ll lladdr;
-	int i;
 	lladdr.sll_ifindex = p->eth0_ifidx;
 	lladdr.sll_protocol = 0;
 	lladdr.sll_halen = ETH_ALEN;
