@@ -1,7 +1,7 @@
 CC = clang
 LIBS = -lrt
-tour_OBJS = tour.o utils.o api.o mainloop.o
-arp_OBJS = arp.o utils.o api.o mainloop.o
+tour_OBJS = tour.o utils.o mainloop.o
+arp_OBJS = arp.o utils.o mainloop.o
 OBJS = $(tour_OBJS) $(arp_OBJS)
 ID = syuxuan
 BINARIES = $(ID)_tour $(ID)_arp
