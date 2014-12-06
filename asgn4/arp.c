@@ -136,7 +136,7 @@ void areq_request(struct client *nc, struct sockaddr *addr,
 	    0, (void *)&lladdr, sizeof(lladdr));
 	if (ret)
 		log_warn("sendto via interface %d failed, %s\n",
-		    i, strerror(errno));
+		    p->eth0_ifidx, strerror(errno));
 	return;
 }
 
