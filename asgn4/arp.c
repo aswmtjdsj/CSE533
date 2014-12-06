@@ -160,12 +160,17 @@ void areq_callback(void *ml, void *data, int rw) {
 	int fd = fd_get_fd(nc->fh);
 	int ret = recvfrom(fd, &ip, 4, 0, &caddr, &len);
 	if (ret <= 0) {
+		if (ret < 0)
+			log_warn("Failed to recv\n");
+		else
+			log_info("Remote socket closed\n");
 		if (nc->owner) {
 			skip_list_delete(&nc->h);
 			nc->owner->client_count--;
 		}
 		close(fd);
 		free(nc);
+		return;
 	}
 
 	struct skip_list_head *res =
