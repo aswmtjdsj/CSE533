@@ -22,6 +22,7 @@
 #define MAX_IP_IN_PAYLOAD 32
 #define MULTICAST_IP "224.0.0.2"
 #define MULTICAST_PORT 17828
+#define ID "syuxuan"
 /*
 #define INPUT_BUF_MAX_LEN 20
 #define MSG_MAX_LEN 50

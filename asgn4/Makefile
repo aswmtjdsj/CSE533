@@ -5,7 +5,7 @@ arp_OBJS = arp.o utils.o api.o mainloop.o
 OBJS = $(tour_OBJS) $(arp_OBJS)
 ID = syuxuan
 BINARIES = $(ID)_tour $(ID)_arp
-CFLAGS = -g -Wall -Wno-unused-function -DID=\"$(ID)\"
+CFLAGS = -g -Wall -Wno-unused-function
 
 all: $(OBJS) $(BINARIES)
 
