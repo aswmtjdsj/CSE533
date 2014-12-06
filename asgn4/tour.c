@@ -39,6 +39,16 @@ void insert_ping_entry(uint32_t ip_addr) {
 	ping_list = cur;
 }
 
+void debug_ping_entry() {
+	struct ping_entry * temp = ping_list;
+	log_debug("ping_entry> ID ip\n");
+	int cnt = 0;
+	while(temp != NULL) {
+		log_debug("\t\t%d\t%s\n", cnt++, inet_ntoa((struct in_addr) {temp->ip_addr}));
+		temp = temp->next;
+	}
+}
+
 void show_tour_list() {
 	struct tour_list_entry * temp_entry = tour_list;
 	int cnt = 0;
@@ -252,14 +262,28 @@ void rt_callback(void * ml, void * data, int rw) {
 		my_err_quit("sendto error");
 	}
 
-	// initiate pinging
-	// TODO, detect pinging initiated or not
-	log_info("Initiating pinging on node <%s> ...\n", src_host->h_name);
 	struct sockaddr_in prec_addr;
 	memset(&prec_addr, 0, sizeof(prec_addr));
 	addr_len = sizeof(prec_addr);
 	prec_addr.sin_addr.s_addr = ntohl(s_payload->ip_list[s_payload->cur_pt - 1]);
 	prec_addr.sin_family = AF_INET;
+
+	// detect pinging initiated or not
+	char local_name[HOST_NAME_MAX_LEN];
+    if(gethostname(local_name, sizeof(local_name)) < 0) {
+        my_err_quit("gethostname error");
+    }
+
+	if(search_ping_list(prec_addr.sin_addr.s_addr) != NULL) {
+		log_warn("Pinging has been initiated on node <%s>, no need to re-initiate!\n", local_name); 
+		return ;
+	}
+
+	// initiate pinging
+	log_info("Initiating pinging on node <%s> ...\n", local_name);
+	insert_ping_entry(prec_addr.sin_addr.s_addr);
+	debug_ping_entry();
+
 	log_info("For preceding node, with ip: %s\n", inet_ntoa(prec_addr.sin_addr));
 
 	/*int j = 0;
