@@ -221,6 +221,7 @@ void arp_req_callback(void *ml, void *buf, struct sockaddr_ll *addr,
 	    &addrv4, addr_cmp);
 	struct skip_list_head *cres = skip_list_find_eq(&p->cache,
 	    &saddrv4, cache_cmp);
+	log_info("Target ip is %s\n", inet_ntoa((struct in_addr){addrv4}));
 
 	if (!res) {
 		//Not for me
@@ -377,6 +378,8 @@ int main(int argc, const char **argv) {
 	skip_list_init_head(&p.myip);
 	skip_list_init_head(&p.cache);
 	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
+	char *iptmp;
+	size_t len;
 	tmp = head;
 	for (tmp = head; tmp; tmp = tmp->ifi_next) {
 		struct sockaddr_in *s = (struct sockaddr_in *)
@@ -384,6 +387,7 @@ int main(int argc, const char **argv) {
 		if (strcmp(tmp->ifi_name, "eth0") == 0) {
 			log_debug("Getting local ip addresses from eth0\n");
 			struct ip_record *ir = talloc(1, struct ip_record);
+			log_info("Local ip: %s\n", sa_ntop((void *)s, &iptmp, &len));
 			ir->ip = s->sin_addr.s_addr;
 			p.eth0_ifidx = tmp->ifi_index;
 			skip_list_insert(&p.myip, &ir->h, &ir->ip, addr_cmp);
