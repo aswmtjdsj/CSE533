@@ -378,8 +378,8 @@ int main(int argc, const char **argv) {
 	skip_list_init_head(&p.myip);
 	skip_list_init_head(&p.cache);
 	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
-	char *iptmp;
-	size_t len;
+	char *iptmp = NULL;
+	size_t len = 0;
 	tmp = head;
 	for (tmp = head; tmp; tmp = tmp->ifi_next) {
 		struct sockaddr_in *s = (struct sockaddr_in *)
