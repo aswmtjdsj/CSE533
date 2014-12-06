@@ -12,8 +12,10 @@ struct tour_list_entry {
 } * tour_list;
 
 struct bound {
-	void * fh1;
 	void * fh2;
+	int pg_send, mcast_fd;
+	int eth0_idx, eth0_ip;
+	uint8_t hwaddr[8];
 };
 
 struct ip_payload {
@@ -230,7 +232,13 @@ void rt_callback(void * ml, void * data, int rw) {
 	// then TODO
 	log_info("Node visited for the first time! Gonna join the multicast group!\n");
 	// multicast
-	
+	struct ip_mreq mreq;
+	mreq.imr_multiaddr.s_addr = r_payload->mcast_ip;
+	mreq.imr_interface.s_addr = bd->eth0_ip;
+	int ret = setsockopt(bd->mcast_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+	if (ret < 0)
+		log_err("Add membership failed\n");
+
 	// if this is the end node of the tour
 	if(r_payload->cur_pt + 1 >= r_payload->ip_num - 1) {
 		// TODO
@@ -305,7 +313,6 @@ void rt_callback(void * ml, void * data, int rw) {
 	}*/
 
 	struct hwaddr prec_hw;
-	int ret = 0;
 	if((ret = areq((struct sockaddr *)&prec_addr, addr_len, &prec_hw)) < 0) {
 		log_err("Failed to acquire physical address of the preceding node!\n");
 		return ;
@@ -319,6 +326,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	}
 
 	log_info("its physical addr: %s\n", hw_buf);
+	log_info("index: %u\n", prec_hw.sll_ifindex);
 
 	struct hostent * prec_host;
 	if((prec_host = gethostbyaddr(&(prec_addr.sin_addr), sizeof(struct in_addr), AF_INET)) == NULL) {
@@ -341,8 +349,7 @@ void rt_callback(void * ml, void * data, int rw) {
 		log_err("gethostbyaddr error");
 	}
 
-	struct fd * fh_ping = bd->fh1;
-	int sock_ping = fd_get_fd(fh_ping);
+	int sock_ping = bd->pg_send;
 	uint8_t frame_buf[1500] = { 0 };
 	int data_len = 56, frame_len = 
 		sizeof(struct ether_header) + 
@@ -352,18 +359,11 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	struct ether_header * e_hdr = (struct ether_header *) frame_buf;
 	e_hdr->ether_type = htons(ETH_P_IP);
-	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
-	tmp = head;
-	for (tmp = head; tmp; tmp = tmp->ifi_next) {
-		if (strcmp(tmp->ifi_name, "eth0") == 0) {
-			memcpy(e_hdr->ether_shost, tmp->ifi_hwaddr, tmp->ifi_halen);
-			break;
-		}
-	}
 	memcpy(e_hdr->ether_dhost, prec_hw.sll_addr, prec_hw.sll_halen);
+	memcpy(e_hdr->ether_shost, bd->hwaddr, ETH_ALEN);
 
 	struct sockaddr_ll lladdr;
-	lladdr.sll_ifindex = prec_hw.sll_ifindex;
+	lladdr.sll_ifindex = ntohl(prec_hw.sll_ifindex);
 	lladdr.sll_protocol = IPPROTO_ICMP;
 	lladdr.sll_halen = prec_hw.sll_halen;
 	lladdr.sll_family = AF_PACKET;
@@ -373,14 +373,13 @@ void rt_callback(void * ml, void * data, int rw) {
 	struct iphdr * ip_hdr = (struct iphdr *) (e_hdr + 1);
 	ip_hdr = make_ip_hdr(ip_hdr, sizeof(struct icmp) + data_len,
 			IP_HDR_ID, IPPROTO_ICMP, src_ip.s_addr, prec_addr.sin_addr.s_addr);
-	
 	int icmp_cnt = 0;
 	struct icmp * icmp_hdr = (struct icmp *) (ip_hdr + 1);
 
 	// send ping echo request
 	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), data_len);
 
-	
+
 SEND_ICMP:
 
 	// Message Type (8 bits): echo request
@@ -398,8 +397,8 @@ SEND_ICMP:
 	}
 
 	if((ret = sendto(sock_ping, frame_buf, frame_len,
-					0, (void *) &lladdr, sizeof(lladdr))) < 0) {
-		my_err_quit("sendto error");
+		0, (void *) &lladdr, sizeof(lladdr))) < 0) {
+		my_err_quit("sendto error!");
 	}
 
 	signal(SIGALRM, sig_alarm);
@@ -600,17 +599,23 @@ int main(int argc, const char **argv) {
 	log_debug("mainloop gonna start!\n");
 	void * ml = mainloop_new();
 
-	void * fh_pg_send = fd_insert(ml, sock_pg_send, FD_READ, NULL, NULL);
-
 	void * fh_rt = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
 
 	struct bound * bd = malloc(sizeof(struct bound));
-	bd->fh1 = fh_pg_send;
+	bd->pg_send = sock_pg_send;
 	bd->fh2 = fh_rt;
 	fd_set_data(fh_rt, bd);
 
 	void * fh_pg_reply = fd_insert(ml, sock_pg_reply, FD_READ, reply_callback, NULL);
 	fd_set_data(fh_pg_reply, fh_pg_reply);
+
+	bd->mcast_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	struct sockaddr_in baddr;
+	int ttl = 1;
+	memset(&baddr, 0, sizeof(baddr));
+	baddr.sin_port = htons(0xF00D);
+	bind(bd->mcast_fd, (void *)&baddr, sizeof(baddr));
+	setsockopt(bd->mcast_fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
 
     // for source node, it should actively send
     if(source_node_flag) {
@@ -648,6 +653,17 @@ int main(int argc, const char **argv) {
         }
     }
 
+	struct ifi_info *head = get_ifi_info(AF_INET, 1), *tmp;
+	tmp = head;
+	for (tmp = head; tmp; tmp = tmp->ifi_next) {
+		if (strcmp(tmp->ifi_name, "eth0") == 0) {
+			memcpy(bd->hwaddr, tmp->ifi_hwaddr, tmp->ifi_halen);
+			bd->eth0_ip = ((struct sockaddr_in *)tmp->ifi_addr)->sin_addr.s_addr;
+			bd->eth0_idx = tmp->ifi_index;
+			break;
+		}
+	}
+	free_ifi_info(head);
 	mainloop_run(ml);
 	free(ml);
 
