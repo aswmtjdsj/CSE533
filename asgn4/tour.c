@@ -369,8 +369,6 @@ void rt_callback(void * ml, void * data, int rw) {
 	int icmp_cnt = 0;
 	struct icmp * icmp_hdr = (struct icmp *) (ip_hdr + 1);
 
-	char * icmp_payload = (char *) (icmp_hdr + 1);
-
 	// send ping echo request
 	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), data_len);
 
@@ -386,11 +384,10 @@ SEND_ICMP:
 	// Sequence Number (16 bits): starts at 0
 	icmp_hdr->icmp_seq = htons (icmp_cnt++);
 
-	// timestamp
-	time(&a_clock);
-	cur_time = localtime(&a_clock);
-	strcpy(icmp_payload, asctime(cur_time));
-	icmp_payload[strlen(icmp_payload)-1] = 0;
+	if(gettimeofday((struct timeval *) icmp_hdr->icmp_data, NULL) < 0) {
+		log_err("gettimeofday error!\n");
+		return ;
+	}
 
 	if((ret = sendto(sock_ping, frame_buf, frame_len, 0, 
 					(void *) &prec_hw, sizeof(prec_hw))) < 0) {
@@ -415,7 +412,7 @@ void reply_callback(void * ml, void * data, int rw) {
 	int sock_fd = fd_get_fd(fh);
 
 	//
-	int packet_len = sizeof(struct iphdr) + sizeof(struct icmp) + 100 /* data */;
+	int data_len = 56, packet_len = sizeof(struct iphdr) + sizeof(struct icmp) + data_len;
 	uint8_t * buffer = malloc(packet_len);
 	int recv_size = 0;
 
@@ -432,9 +429,23 @@ void reply_callback(void * ml, void * data, int rw) {
 	struct iphdr * r_hdr = (void *) buffer;
 	show_ip_hdr(r_hdr, "received");
 
-	struct icmp * icmp_hdr= (struct icmp *)(r_hdr + 1);
+	struct icmp * icmp_hdr = (struct icmp *)(r_hdr + 1);
+	struct timeval * sent_tv = (struct timeval *) icmp_hdr->icmp_data;
+	struct timeval * recv_tv = NULL;
+	if(gettimeofday(recv_tv, NULL) < 0) {
+		log_err("gettimeofday error!\n");
+		return ;
+	}
 
-	// TODO
+	if((recv_tv->tv_usec -= sent_tv->tv_usec) < 0) {
+		recv_tv->tv_sec --;
+		recv_tv->tv_usec += 1000000;
+	}
+	recv_tv->tv_sec -= sent_tv->tv_sec;
+	double rtt = recv_tv->tv_sec * 1000. + recv_tv->tv_usec / 1000.;
+
+	log_info("%d bytes from %s: seq: %u, ttl: %d, rtt: %.3 ms\n",
+			data_len, inet_ntoa(src_addr.sin_addr), icmp_hdr->icmp_seq, r_hdr->ttl, rtt);
 }
 
 int main(int argc, const char **argv) {
