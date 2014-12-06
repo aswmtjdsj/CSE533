@@ -234,6 +234,13 @@ int main(int argc, const char **argv) {
 				"Current node <%s> is not the source node!\n", local_name);
 
 	} else {
+		if(argc > MAX_IP_IN_PAYLOAD) {
+			log_err("Too many vm nodes in the input sequence, "
+					"max number of input nodes should be %d!\n",
+					MAX_IP_IN_PAYLOAD - 1);
+			code_flag = EXIT_FAILURE;
+			goto ALL_DONE;
+		}
         // this is source node, mark it
         source_node_flag = 1;
 		// parse vm node seq
@@ -323,7 +330,6 @@ int main(int argc, const char **argv) {
 	log_debug("mainloop gonna start!\n");
 	void * ml = mainloop_new();
 	void * fh = fd_insert(ml, sock_rt, FD_READ, rt_callback, NULL);
-	log_debug("LOL\n");
 	fd_set_data(fh, fh);
 
     // for source node, it should actively send
