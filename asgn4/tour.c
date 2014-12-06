@@ -73,7 +73,7 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload,
          payload->ip_num = 0;
          struct tour_list_entry * temp_entry = tour_list;
          while(temp_entry != NULL) {
-             payload->ip_list[payload->ip_num] = (temp_entry->ip_addr).sin_addr.s_addr; // already network byte order
+             payload->ip_list[payload->ip_num] = htonl((temp_entry->ip_addr).sin_addr.s_addr);
              temp_entry = temp_entry->next;
 			 payload->ip_num += 1;
          }
@@ -91,7 +91,20 @@ struct ip_payload * make_ip_payload(struct ip_payload * payload,
     return payload;
 }
 
-void show_ip_payload(struct ip_payload * payload) {
+void show_ip_payload(struct ip_payload * payload, const char * prompt) {
+    // uint32_t ip_list[MAX_IP_IN_PAYLOAD];
+	char str_m[IP_P_MAX_LEN], str_list[IP_P_MAX_LEN * MAX_IP_IN_PAYLOAD];
+	strcpy(str_m, inet_ntoa((struct in_addr){ntohl(payload->mcast_ip)}));
+	int i = 0, offset = 0;
+	for(; i < payload->ip_num; i++) {
+		offset += sprintf(str_list + offset, "%s, ",
+				inet_ntoa((struct in_addr){ntohl(payload->ip_list[i])}));
+	}
+	log_debug("%s ip payload: {mcast_ip: %s, mcast_port: %d, "
+			"size of ip list: %d, current pointer: %d, ip_list: {%s}\n",
+			prompt,
+			str_m, ntohs(payload->mcast_port), payload->ip_num, payload->cur_pt, str_list);
+			//str_dst);
 }
 
 void rt_callback(void * ml, void * data, int rw) {
@@ -116,6 +129,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	struct iphdr * r_hdr = (void *) buffer;
 	show_ip_hdr(r_hdr, "received");
 	struct ip_payload * r_payload = (struct ip_payload *) (r_hdr + 1);
+	show_ip_payload(r_payload, "r_payload");
 
 	// check ID
 	if(ntohs(r_hdr->id) != IP_HDR_ID) {
@@ -170,7 +184,7 @@ void rt_callback(void * ml, void * data, int rw) {
 	log_info("First time!\n");
 	
 	// if this is the end node of the tour
-	if(r_payload->cur_pt + 1 == r_payload->ip_num) {
+	if(r_payload->cur_pt + 1 >= r_payload->ip_num) {
 		// TODO
 		log_info("End of the tour list!\n");
 		return ;
@@ -178,7 +192,7 @@ void rt_callback(void * ml, void * data, int rw) {
 
 	// not the end, then resend
 	uint32_t s_addr = ntohl(r_hdr->daddr), d_addr;
-	if(s_addr != r_payload->ip_list[r_payload->cur_pt + 1]) {
+	if(s_addr != ntohl(r_payload->ip_list[r_payload->cur_pt + 1])) {
 		log_err("It's weird, the dst address retrieved from ip packet header "
 				"is different from the corresponding addr in ip list of ip packet payload"
 				", please check!\n");
@@ -212,7 +226,36 @@ void rt_callback(void * ml, void * data, int rw) {
 		my_err_quit("sendto error");
 	}
 
-	// init ping 
+	// initiate pinging
+	// TODO, detect pinging initiated or not
+	log_info("Initiating pinging on node <%s> ...\n", src_host->h_name);
+	struct sockaddr_in prec_addr;
+	memset(&prec_addr, 0, sizeof(prec_addr));
+	addr_len = sizeof(prec_addr);
+	prec_addr.sin_addr.s_addr = ntohl(s_payload->ip_list[s_payload->cur_pt - 1]);
+	prec_addr.sin_family = AF_INET;
+	log_info("For preceding node, with ip: %s\n", inet_ntoa(prec_addr.sin_addr));
+
+	/*int j = 0;
+	for(j = 0; j < s_payload->ip_num; j++) {
+		log_debug("#%d ip: %s\n", j, inet_ntoa((struct in_addr) {ntohl(s_payload->ip_list[j])}));
+	}*/
+
+	struct hwaddr * prec_hw = NULL;
+	int ret = 0;
+	if((ret = areq((struct sockaddr *)&prec_addr, addr_len, prec_hw)) < 0) {
+		log_err("Failed to acquire physical address of the preceding node!\n");
+		return ;
+	}
+	char hw_buf[MAC_MAX_LEN];
+	int buf_pos = 0;
+	buf_pos += sprintf(hw_buf, "%02X", prec_hw->sll_addr[0]);
+	int i = 0;
+	for(i = 1; i < prec_hw->sll_halen; i++) {
+		buf_pos += sprintf(hw_buf + buf_pos, ":%02X", prec_hw->sll_addr[i]);
+	}
+
+	log_info("its physical addr: %s\n", hw_buf);
 	// TODO
 }
 
@@ -363,11 +406,12 @@ int main(int argc, const char **argv) {
         i_hdr = make_ip_hdr(i_hdr, sizeof(struct ip_payload), IP_HDR_ID, s_addr, d_addr);
 
 		show_ip_hdr(i_hdr, "first");
+		show_ip_payload(i_payload, "i_payload");
 
         int n = 0;
         socklen_t addr_len = sizeof(tour_list->ip_addr);
         tour_list->ip_addr.sin_family = AF_INET; // should be set
-        log_info("The source node <%s> is sending its tour packet via rt socket!\n", tour_list->next->host_name);
+        log_info("The source node <%s> is sending its tour packet via rt socket!\n", tour_list->host_name);
         if((n = sendto(sock_rt, packet, ntohs(i_hdr->tot_len), 0, (struct sockaddr *) &(tour_list->ip_addr), addr_len)) < 0) {
             my_err_quit("sendto error");
         }

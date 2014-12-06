@@ -1,6 +1,6 @@
 CC = clang
 LIBS = -lrt
-tour_OBJS = tour.o utils.o mainloop.o
+tour_OBJS = tour.o utils.o mainloop.o arp_client.o
 arp_OBJS = arp.o utils.o mainloop.o
 arp_test_OBJS = arp_test.o arp_client.o
 OBJS = $(tour_OBJS) $(arp_OBJS)

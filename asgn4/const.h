@@ -25,6 +25,7 @@
 #define ID "syuxuan"
 #define MSG_MAX_LEN 50
 #define IP_P_MAX_LEN 20
+#define MAC_MAX_LEN 40
 /*
 #define INPUT_BUF_MAX_LEN 20
 #define DGRAM_MAX_LEN 512
