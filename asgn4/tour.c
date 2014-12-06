@@ -174,6 +174,7 @@ void rt_callback(void * ml, void * data, int rw) {
 				log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
 				break;
 		}
+		log_err("gethostbyaddr error");
 		return ;
 	}
 
@@ -241,21 +242,44 @@ void rt_callback(void * ml, void * data, int rw) {
 		log_debug("#%d ip: %s\n", j, inet_ntoa((struct in_addr) {ntohl(s_payload->ip_list[j])}));
 	}*/
 
-	struct hwaddr * prec_hw = NULL;
+	struct hwaddr prec_hw;
 	int ret = 0;
-	if((ret = areq((struct sockaddr *)&prec_addr, addr_len, prec_hw)) < 0) {
+	if((ret = areq((struct sockaddr *)&prec_addr, addr_len, &prec_hw)) < 0) {
 		log_err("Failed to acquire physical address of the preceding node!\n");
 		return ;
 	}
 	char hw_buf[MAC_MAX_LEN];
 	int buf_pos = 0;
-	buf_pos += sprintf(hw_buf, "%02X", prec_hw->sll_addr[0]);
+	buf_pos += sprintf(hw_buf, "%02X", prec_hw.sll_addr[0]);
 	int i = 0;
-	for(i = 1; i < prec_hw->sll_halen; i++) {
-		buf_pos += sprintf(hw_buf + buf_pos, ":%02X", prec_hw->sll_addr[i]);
+	for(i = 1; i < prec_hw.sll_halen; i++) {
+		buf_pos += sprintf(hw_buf + buf_pos, ":%02X", prec_hw.sll_addr[i]);
 	}
 
 	log_info("its physical addr: %s\n", hw_buf);
+
+	struct hostent * prec_host;
+	if((prec_host = gethostbyaddr(&(prec_addr.sin_addr), sizeof(struct in_addr), AF_INET)) == NULL) {
+		switch(h_errno) {
+			case HOST_NOT_FOUND:
+				log_err("Host of address %s is unknown!\n", inet_ntoa(prec_addr.sin_addr));
+				break;
+			case NO_ADDRESS:
+				// case NO_DATA:
+				log_err("The requested name is valid but does not have an IP address\n");
+				break;
+			case NO_RECOVERY:
+				log_err("A nonrecoverable name server error occurred!\n");
+				break;
+			case TRY_AGAIN:
+				log_err("A temporary error occurred on an authoritative name server. Try again later.\n");
+				break;
+		}
+
+		log_err("gethostbyaddr error");
+	}
+
+	log_info("PING %s (%s): %d data bytes.\n", prec_host->h_name, inet_ntoa(prec_addr.sin_addr), 0 /* TODO */);
 	// TODO
 }
 
@@ -265,6 +289,7 @@ void reply_callback(void * ml, void * data, int rw) {
 	log_debug("Received ping echo request via pg_reply!\n");
 	struct fd * fh = data;
 	int sock_fd = fd_get_fd(fh);
+	// TODO
 }
 
 int main(int argc, const char **argv) {
@@ -312,7 +337,7 @@ int main(int argc, const char **argv) {
 				goto ALL_DONE;
 			}
 
-			// get dest host by name
+			// get host by name
 			if((i_host = gethostbyname((i==argc)?local_name:argv[i])) == NULL) {
 				switch(h_errno) {
 					case HOST_NOT_FOUND:
