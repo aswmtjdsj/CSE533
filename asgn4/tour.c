@@ -389,8 +389,16 @@ SEND_ICMP:
 		return ;
 	}
 
-	if((ret = sendto(sock_ping, frame_buf, frame_len, 0, 
-					(void *) &prec_hw, sizeof(prec_hw))) < 0) {
+	struct sockaddr_ll lladdr;
+	lladdr.sll_ifindex = prec_hw.sll_ifindex;
+	lladdr.sll_protocol = IPPROTO_ICMP;
+	lladdr.sll_halen = prec_hw.sll_halen;
+	lladdr.sll_family = AF_PACKET;
+	lladdr.sll_hatype = prec_hw.sll_hatype;
+	memcpy(lladdr.sll_addr, prec_hw.sll_addr, prec_hw.sll_halen);
+
+	if((ret = sendto(sock_ping, frame_buf, frame_len,
+					0, (void *) &lladdr, sizeof(lladdr))) < 0) {
 		my_err_quit("sendto error!");
 	}
 
@@ -406,7 +414,7 @@ SEND_ICMP:
 void reply_callback(void * ml, void * data, int rw) {
 	// ping reply callback
 
-	log_debug("Received ping echo request via pg_reply!\n");
+	log_debug("Received ping echo reply via pg_reply!\n");
 	struct fd * fh = data;
 	int sock_fd = fd_get_fd(fh);
 
