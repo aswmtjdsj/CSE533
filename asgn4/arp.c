@@ -86,7 +86,7 @@ arp_send_request(struct sockaddr *addr, struct arp_protocol *p) {
 	ehdr->ether_type = htons(ARP_MAGIC);
 	memcpy(ehdr->ether_shost, p->hwaddr, ETH_ALEN);
 	memcpy(msg->data, p->hwaddr, p->halen);
-	memcpy(msg->data, p->hwaddr, p->halen);
+	msg->oper = htons(ARPOP_REQUEST);
 
 	int pos = p->halen;
 	struct sockaddr_in *sin = (void *)addr;
