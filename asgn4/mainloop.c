@@ -106,7 +106,8 @@ void *fd_insert(void *loop, int fd, int rw, fd_cb cb, void *data) {
 	nfd->cb = cb;
 	nfd->rw = rw;
 	nfd->next = ml->fds;
-	ml->fds->prev = &nfd->next;
+	if (ml->fds)
+		ml->fds->prev = &nfd->next;
 	nfd->prev = &ml->fds;
 	ml->fds = nfd;
 	return nfd;
