@@ -92,11 +92,11 @@ arp_dump(struct arp *msg) {
 	int i;
 	char buf[30];
 	for (i = 0; i < msg->hlen; i++)
-		sprintf(buf+3*i, "%02X", msg->data[i]);
+		sprintf(buf+3*i, "%02X:", msg->data[i]);
 	buf[3*msg->hlen-1] = 0;
 	log_info("\tsource hardware address: %s\n", buf);
 	for (i = 0; i < msg->hlen; i++)
-		sprintf(buf+3*i, "%02X", msg->data[msg->hlen+msg->plen+i]);
+		sprintf(buf+3*i, "%02X:", msg->data[msg->hlen+msg->plen+i]);
 	buf[3*msg->hlen-1] = 0;
 	log_info("\ttarget hardware address: %s\n", buf);
 }
